@@ -281,7 +281,7 @@ function* updateEdges(runTime = 30) {
 	console.log(generator.includeIntersectionEdges);
 
 	const collection = yield* generator.generate(group, {
-		visibilityCuller: new VisibilityCuller(world.renderer.three, { pixelsPerMeter: 0.1 }),
+		visibilityCuller: new VisibilityCuller(world.renderer.three, { pixelsPerMeter: 0.02 }),
 		onProgress: (msg, tot, edges) => {
 
 			outputContainer.innerText = msg;

@@ -13,17 +13,16 @@ const params = {
 	includeIntersectionEdges: false,
 	rotate: () => {
 
-		group.quaternion.random();
-		group.position.set(0, 0, 0);
-		group.updateMatrixWorld(true);
+		const randomQuaternion = new THREE.Quaternion();
+		randomQuaternion.random();
 
-		const box = new THREE.Box3();
-		box.setFromObject(group, true);
-		box.getCenter(group.position).multiplyScalar(- 1);
-		group.position.y = Math.max(0, - box.min.y) + 1;
-		group.updateMatrixWorld(true);
+		projectedMeshes.quaternion.copy(randomQuaternion);
+		projectedMeshes.position.set(0, 0, 0);
+		projectedMeshes.updateMatrixWorld(true);
 
-		task = updateEdges();
+		allMeshes.quaternion.copy(randomQuaternion);
+		allMeshes.position.set(0, 0, 0);
+		allMeshes.updateMatrixWorld(true);
 
 	},
 	regenerate: () => {
@@ -36,7 +35,7 @@ const params = {
 const ANGLE_THRESHOLD = 50;
 // let needsRender = false;
 let gui;
-let group, projection, drawThroughProjection;
+let projectedMeshes, projection, drawThroughProjection;
 let outputContainer;
 let task = null;
 
@@ -119,8 +118,8 @@ const clipper = components.get(OBC.Clipper);
 const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));
 const plane = clipper.list.get(planeId);
 
-group = new THREE.Group();
-world.scene.three.add(group);
+projectedMeshes = new THREE.Group();
+world.scene.three.add(projectedMeshes);
 
 const allMeshes = new THREE.Group();
 world.scene.three.add(allMeshes);
@@ -197,7 +196,7 @@ allMeshes.traverse(c => {
 
 // center model
 const box = new THREE.Box3();
-box.setFromObject(group, true);
+box.setFromObject(projectedMeshes, true);
 
 // create projection display mesh
 projection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x030303, depthTest: false }));
@@ -226,7 +225,7 @@ world.renderer.onBeforeUpdate.add(() => {
 
 	}
 
-	group.visible = params.displayModel;
+	projectedMeshes.visible = params.displayModel;
 	drawThroughProjection.visible = params.displayDrawThroughProjection;
 
 });
@@ -244,9 +243,9 @@ function* updateEdges(runTime = 30) {
 	outputContainer.innerText = 'Generating...';
 
 
-	const previous = [...group.children];
+	const previous = [...projectedMeshes.children];
 	for (const child of previous) {
-		group.remove(child);
+		projectedMeshes.remove(child);
 		child.geometry = null;
 	}
 
@@ -267,7 +266,7 @@ function* updateEdges(runTime = 30) {
 		const newMesh = new THREE.Mesh(child.geometry, projectedMaterial);
 		newMesh.applyMatrix4(child.matrixWorld);
 
-		group.add(newMesh);
+		projectedMeshes.add(newMesh);
 	}
 
 	// dispose the geometry
@@ -285,7 +284,7 @@ function* updateEdges(runTime = 30) {
 	generator.includeIntersectionEdges = params.includeIntersectionEdges;
 	console.log(generator.includeIntersectionEdges);
 
-	const collection = yield* generator.generate(group, {
+	const collection = yield* generator.generate(projectedMeshes, {
 		visibilityCuller: new VisibilityCuller(world.renderer.three, { pixelsPerMeter: 0.02 }),
 		onProgress: (msg, tot, edges) => {
 

@@ -13,6 +13,7 @@ import { LineObjectsBVH } from './utils/LineObjectsBVH.js';
 import { bvhcastEdges } from './utils/bvhcastEdges.js';
 import { getAllMeshes } from './utils/getAllMeshes.js';
 import { VisibilityCuller } from './VisibilityCuller.js';
+import { Logger } from './utils/Logger.js';
 
 // these shared variables are not used across "yield" boundaries in the
 // generator so there's no risk of overwriting another tasks data
@@ -217,6 +218,9 @@ export class ProjectionGenerator {
 			visibilityCuller = null,
 		} = options;
 
+		Logger.reset();
+		Logger.startTotal();
+
 		if ( scene.isBufferGeometry ) {
 
 			scene = new Mesh( scene );
@@ -225,6 +229,7 @@ export class ProjectionGenerator {
 
 		if ( visibilityCuller ) {
 
+			Logger.startStep( 'Visibility culling' );
 			let finished = false;
 			visibilityCuller.cull( scene ).then( res => {
 
@@ -248,17 +253,20 @@ export class ProjectionGenerator {
 		edgeGenerator.thresholdAngle = angleThreshold;
 		edgeGenerator.projectionDirection.copy( UP_VECTOR );
 
+		Logger.startStep( 'Extracting edges' );
 		onProgress( 'Extracting edges' );
 		let edges = [];
 		yield* edgeGenerator.getEdgesGenerator( scene, edges, options );
 		if ( includeIntersectionEdges ) {
 
+			Logger.startStep( 'Extracting intersection edges' );
 			onProgress( 'Extracting self-intersecting edges' );
 			yield* edgeGenerator.getIntersectionEdgesGenerator( scene, edges, options );
 
 		}
 
 		// filter out any degenerate projected edges
+		Logger.startStep( 'Filtering edges' );
 		onProgress( 'Filtering edges' );
 		edges = edges.filter( e => ! isYProjectedLineDegenerate( e ) );
 
@@ -267,6 +275,7 @@ export class ProjectionGenerator {
 		const collector = new ProjectedEdgeCollector( scene );
 		collector.iterationTime = iterationTime;
 
+		Logger.startStep( 'Clipping edges' );
 		onProgress( 'Clipping edges' );
 		yield* collector.addEdgesGenerator( edges, {
 			onProgress: ! onProgress ? null : ( prog, tot ) => {
@@ -275,6 +284,9 @@ export class ProjectionGenerator {
 
 			},
 		} );
+
+		Logger.endStep();
+		Logger.printSummary();
 
 		return collector;
 

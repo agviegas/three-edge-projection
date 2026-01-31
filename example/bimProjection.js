@@ -3,10 +3,12 @@ import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { MeshBVH, SAH } from 'three-mesh-bvh';
 import * as OBC from '@thatopen/components';
 import { ProjectionGenerator, VisibilityCuller } from '..';
+import {Logger} from '../src/utils/Logger.js';
 
 
 const params = {
 	displayModel: true,
+	logging: false,
 	displayDrawThroughProjection: false,
 	includeIntersectionEdges: false,
 	rotate: () => {
@@ -205,6 +207,9 @@ world.scene.three.add(projection, drawThroughProjection);
 
 gui = new GUI();
 gui.add(params, 'includeIntersectionEdges');
+gui.add(params, 'logging').onChange(() => {
+	Logger.enabled = params.logging;
+});
 gui.add(params, 'rotate');
 gui.add(params, 'regenerate');
 

@@ -46,6 +46,7 @@
 			white-space: pre;
 			line-height: 1.4;
 			overflow-x: auto;
+			white-space: pre-wrap;
 		}
 		.highlight-box {
 			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
@@ -182,20 +183,6 @@ Clean and readable!</div>
 		of a box - the faces meet at 90°, creating a visible crease.
 	</p>
 
-	<div class="diagram">
-Side View of Two Triangles:
-
-        Normal A →      ← Normal B
-              \        /
-               \      /
-                \    /
-    ─────────────\  /─────────────
-    Triangle A    \/    Triangle B
-
-    Angle between normals = sharp
-    → This is a HARD EDGE
-</div>
-
 	<p>
 		The library uses an <span class="inline-code">angleThreshold</span> (default: 50°) to decide
 		what counts as "sharp enough". If the angle between face normals exceeds this threshold,
@@ -325,66 +312,66 @@ O(n²) = 1,000,000 checks              O(n log n) = ~10,000 checks
 
 	<div class="diagram">
 ┌─────────────────────────────────────────────────────────────────┐
-│                         INPUT                                    │
+│                         INPUT                                   │
 │                    3D Mesh (triangles)                          │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    STEP 1: Extract Edges                        │
-│                                                                  │
+│              STEP 1: Generate Candidate Edges                   │
+│                                                                 │
 │  For each pair of adjacent triangles:                           │
 │    - Compare face normals (hard edge test)                      │
 │    - Compare projection directions (silhouette test)            │
 │    - If either passes → add edge to list                        │
-│                                                                  │
-│  Output: List of line segments (edges)                          │
+│                                                                 │
+│  Output: List of candidate line segments (edges)                │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                 STEP 2: Intersection Edges                      │
-│                                                                  │
-│  Find where triangles penetrate each other:                     │
-│    - Use BVH to find potentially intersecting triangles         │
-│    - Calculate actual intersection lines                        │
-│    - Add new edges where objects intersect                      │
-│                                                                  │
-│  Output: Additional edges at object intersections               │
+│                   STEP 2: Pre-filter Edges                      │
+│                                                                 │
+│  Remove edges that definitely won't be visible:                 │
+│    - Back-facing edges                                          │
+│    - Edges outside view frustum                                 │
+│    - (Optional) Intersection edges if enabled                   │
+│                                                                 │
+│  Output: Filtered list of edges                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                   STEP 3: Build Edge BVH                        │
-│                                                                  │
+│                    STEP 3: Build Line BVH                       │
+│                                                                 │
 │  Create a BVH structure for all edges:                          │
 │    - Enables fast spatial queries                               │
 │    - Groups nearby edges together                               │
-│                                                                  │
+│                                                                 │
 │  Output: LineObjectsBVH                                         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                 STEP 4: Occlusion Testing                       │
-│                                                                  │
-│  For each triangle in the scene:                                │
-│    - Find edges that might be behind it (BVH query)             │
+│                  STEP 4: BVHcast Overlaps                       │
+│                                                                 │
+│  Compare Line BVH against Mesh BVH:                             │
+│    - Find edges that might be behind triangles                  │
 │    - Project both to XZ plane                                   │
 │    - Calculate overlap regions                                  │
 │    - Mark overlapping portions as "hidden"                      │
-│                                                                  │
-│  Output: Edges with visibility ranges [visible, hidden, ...]    │
+│                                                                 │
+│  Output: Edges with overlap ranges [visible, hidden, ...]       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    STEP 5: Generate Lines                       │
-│                                                                  │
-│  Convert visibility ranges to line segments:                    │
+│               STEP 5: Convert Overlaps to Lines                 │
+│                                                                 │
+│  Convert overlap ranges to line segments:                       │
 │    - Visible ranges → visible line geometry                     │
 │    - Hidden ranges → hidden line geometry (dashed)              │
-│                                                                  │
+│                                                                 │
 │  Output: Two BufferGeometry objects                             │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                         OUTPUT                                   │
+│                         OUTPUT                                  │
 │              visibleLineGeometry + hiddenLineGeometry           │
 └─────────────────────────────────────────────────────────────────┘
 </div>
@@ -405,7 +392,7 @@ generator.iterationTime = <span class="number">30</span>;  <span class="comment"
 	<div class="highlight-box">
 		<h4>Coming Up Next</h4>
 		<p>
-			In the next lesson, we'll dive into <strong>Step 1: Edge Extraction</strong> and see exactly
+			In the next lesson, we'll dive into <strong>Steps 1-2: Generating Candidate Edges</strong> and see exactly
 			how the EdgeGenerator finds hard and silhouette edges. We'll look at the vertex hashing
 			algorithm and how edges are matched between triangles.
 		</p>

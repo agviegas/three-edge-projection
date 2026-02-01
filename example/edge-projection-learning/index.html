@@ -98,15 +98,15 @@
 		<h2>The Pipeline Overview</h2>
 		<p>When you call <code>ProjectionGenerator.generate()</code>, here's what happens:</p>
 		<div class="pipeline">
-			<div class="pipeline-step"><span class="num">1</span> Extract Edges</div>
+			<div class="pipeline-step"><span class="num">1</span> Generate Candidate Edges</div>
 			<span class="arrow">→</span>
-			<div class="pipeline-step"><span class="num">2</span> Find Intersections</div>
+			<div class="pipeline-step"><span class="num">2</span> Pre-filter Edges</div>
 			<span class="arrow">→</span>
-			<div class="pipeline-step"><span class="num">3</span> Filter Edges</div>
+			<div class="pipeline-step"><span class="num">3</span> Build Line BVH</div>
 			<span class="arrow">→</span>
-			<div class="pipeline-step"><span class="num">4</span> Clip Against Meshes</div>
+			<div class="pipeline-step"><span class="num">4</span> BVHcast Overlaps</div>
 			<span class="arrow">→</span>
-			<div class="pipeline-step"><span class="num">5</span> Output Lines</div>
+			<div class="pipeline-step"><span class="num">5</span> Convert to Lines</div>
 		</div>
 		<p style="font-size: 13px; color: #888; margin-top: 15px;">
 			Each step is explained in detail in the lessons below. By the end, you'll understand exactly how
@@ -128,8 +128,8 @@
 	</div>
 
 	<div class="lesson">
-		<h3><a href="02-edge-extraction.html">02: Edge Extraction - Finding the Important Edges</a></h3>
-		<p>How the EdgeGenerator identifies which edges of a mesh should be drawn based on face angles and silhouettes.</p>
+		<h3><a href="02-edge-extraction.html">02: Generating Candidate Edges</a></h3>
+		<p>How EdgeGenerator collects all edges that might be visible: hard edges from face angles and silhouette edges from projection direction.</p>
 		<div class="topics">
 			<span>Vertex Hashing</span>
 			<span>Edge Matching</span>
@@ -138,35 +138,35 @@
 		</div>
 	</div>
 
-	<div class="lesson">
-		<h3><a href="03-intersection-edges.html">03: Intersection Edges - Where Objects Meet</a></h3>
-		<p>Detecting edges where two triangles penetrate each other, creating new visible lines.</p>
+	<div class="lesson" style="opacity: 0.7;">
+		<h3><a href="03-intersection-edges.html">03: Intersection Edges (Optional)</a></h3>
+		<p>Detecting edges where two triangles penetrate each other. Not needed for most use cases - can be disabled with <code>includeIntersectionEdges = false</code>.</p>
 		<div class="topics">
 			<span>Triangle-Triangle Intersection</span>
 			<span>BVH Acceleration</span>
-			<span>Edge Filtering</span>
+			<span>Optional Feature</span>
 		</div>
 	</div>
 
 	<div class="lesson">
-		<h3><a href="04-occlusion-clipping.html">04: Occlusion & Clipping - What's Visible?</a></h3>
-		<p>The core algorithm: determining which parts of edges are visible vs hidden behind other geometry.</p>
+		<h3><a href="04-occlusion-clipping.html">04: Occlusion & Clipping - BVHcast Overlaps</a></h3>
+		<p>Building a BVH of all lines, then comparing against mesh BVHs to find which sections are occluded. The core visibility algorithm.</p>
 		<div class="topics">
 			<span>LineObjectsBVH</span>
-			<span>Overlap Calculation</span>
+			<span>bvhcastEdges</span>
+			<span>Overlap Ranges</span>
 			<span>Range Merging</span>
-			<span>bvhcastEdges.js</span>
 		</div>
 	</div>
 
 	<div class="lesson">
-		<h3><a href="05-putting-it-together.html">05: Putting It All Together</a></h3>
-		<p>How ProjectionGenerator orchestrates all the pieces, plus performance considerations and the generator pattern.</p>
+		<h3><a href="05-putting-it-together.html">05: Converting Overlaps to Lines</a></h3>
+		<p>How overlap ranges are converted to visible/hidden line segments, and how ProjectionGenerator orchestrates the full pipeline.</p>
 		<div class="topics">
+			<span>overlapsToLines</span>
 			<span>ProjectionGenerator</span>
 			<span>Generator Pattern</span>
-			<span>Performance</span>
-			<span>API Usage</span>
+			<span>Output Geometry</span>
 		</div>
 	</div>
 

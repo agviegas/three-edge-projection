@@ -127,7 +127,18 @@
 <body>
 	<a href="index.html">← Back to Index</a>
 
-	<h1>03: Intersection Edges - Where Objects Meet</h1>
+	<h1>03: Intersection Edges (Optional)</h1>
+
+	<div class="warning-box">
+		<h4>This Feature is Optional</h4>
+		<p>
+			Intersection edges are <strong>not needed for most use cases</strong>. You can disable them with:
+		</p>
+		<pre style="margin: 10px 0;"><code>generator.includeIntersectionEdges = <span class="keyword">false</span>;</code></pre>
+		<p>
+			Skip this lesson if you don't have overlapping geometry or don't need intersection lines.
+		</p>
+	</div>
 
 	<p>
 		When two 3D objects overlap, they create new visible edges where their surfaces intersect.
@@ -135,7 +146,7 @@
 		where geometry penetrates other geometry.
 	</p>
 
-	<h2>Why We Need Intersection Edges</h2>
+	<h2>Why You Might Need Intersection Edges</h2>
 
 	<div class="two-column">
 		<div class="column">

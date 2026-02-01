@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 01: Hello Compute</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+	</style>
+
+  <link rel="modulepreload" crossorigin href="data:text/javascript;base64,KGZ1bmN0aW9uIHBvbHlmaWxsKCkgewogIGNvbnN0IHJlbExpc3QgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCJsaW5rIikucmVsTGlzdDsKICBpZiAocmVsTGlzdCAmJiByZWxMaXN0LnN1cHBvcnRzICYmIHJlbExpc3Quc3VwcG9ydHMoIm1vZHVsZXByZWxvYWQiKSkgewogICAgcmV0dXJuOwogIH0KICBmb3IgKGNvbnN0IGxpbmsgb2YgZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnbGlua1tyZWw9Im1vZHVsZXByZWxvYWQiXScpKSB7CiAgICBwcm9jZXNzUHJlbG9hZChsaW5rKTsKICB9CiAgbmV3IE11dGF0aW9uT2JzZXJ2ZXIoKG11dGF0aW9ucykgPT4gewogICAgZm9yIChjb25zdCBtdXRhdGlvbiBvZiBtdXRhdGlvbnMpIHsKICAgICAgaWYgKG11dGF0aW9uLnR5cGUgIT09ICJjaGlsZExpc3QiKSB7CiAgICAgICAgY29udGludWU7CiAgICAgIH0KICAgICAgZm9yIChjb25zdCBub2RlIG9mIG11dGF0aW9uLmFkZGVkTm9kZXMpIHsKICAgICAgICBpZiAobm9kZS50YWdOYW1lID09PSAiTElOSyIgJiYgbm9kZS5yZWwgPT09ICJtb2R1bGVwcmVsb2FkIikKICAgICAgICAgIHByb2Nlc3NQcmVsb2FkKG5vZGUpOwogICAgICB9CiAgICB9CiAgfSkub2JzZXJ2ZShkb2N1bWVudCwgeyBjaGlsZExpc3Q6IHRydWUsIHN1YnRyZWU6IHRydWUgfSk7CiAgZnVuY3Rpb24gZ2V0RmV0Y2hPcHRzKGxpbmspIHsKICAgIGNvbnN0IGZldGNoT3B0cyA9IHt9OwogICAgaWYgKGxpbmsuaW50ZWdyaXR5KSBmZXRjaE9wdHMuaW50ZWdyaXR5ID0gbGluay5pbnRlZ3JpdHk7CiAgICBpZiAobGluay5yZWZlcnJlclBvbGljeSkgZmV0Y2hPcHRzLnJlZmVycmVyUG9saWN5ID0gbGluay5yZWZlcnJlclBvbGljeTsKICAgIGlmIChsaW5rLmNyb3NzT3JpZ2luID09PSAidXNlLWNyZWRlbnRpYWxzIikKICAgICAgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gImluY2x1ZGUiOwogICAgZWxzZSBpZiAobGluay5jcm9zc09yaWdpbiA9PT0gImFub255bW91cyIpIGZldGNoT3B0cy5jcmVkZW50aWFscyA9ICJvbWl0IjsKICAgIGVsc2UgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gInNhbWUtb3JpZ2luIjsKICAgIHJldHVybiBmZXRjaE9wdHM7CiAgfQogIGZ1bmN0aW9uIHByb2Nlc3NQcmVsb2FkKGxpbmspIHsKICAgIGlmIChsaW5rLmVwKQogICAgICByZXR1cm47CiAgICBsaW5rLmVwID0gdHJ1ZTsKICAgIGNvbnN0IGZldGNoT3B0cyA9IGdldEZldGNoT3B0cyhsaW5rKTsKICAgIGZldGNoKGxpbmsuaHJlZiwgZmV0Y2hPcHRzKTsKICB9Cn0pKCk7Ci8vIyBzb3VyY2VNYXBwaW5nVVJMPW1vZHVsZXByZWxvYWQtcG9seWZpbGwtRGFLT2pocXQuanMubWFwCg==">
+  <link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CW8OjfM0.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-bIZ3TI3W.js">
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+  <script type="module" crossorigin src="../../assets/01-hello-compute-DYUbfNQD.js"></script>
+  <link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CIuLIuvN.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-B9znDNZK.js">
+</head>
+<body>
+	<h1>TSL Learning 01: Hello Compute</h1>
+
+	<p>
+		This is the simplest possible WebGPU compute shader using Three.js TSL (Three Shading Language).
+		We'll create a compute shader that doubles each number in an array.
+	</p>
+
+	<h2>The Concept</h2>
+	<p>
+		A <strong>compute shader</strong> runs on the GPU in parallel. Instead of processing pixels for rendering,
+		it processes arbitrary data. Think of it like a massively parallel for-loop.
+	</p>
+	<pre><code><span class="comment">// CPU (sequential):</span>
+<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">1000</span>; i++) {
+    data[i] = data[i] * <span class="number">2</span>;
+}
+
+<span class="comment">// GPU (parallel):</span>
+<span class="comment">// All 1000 elements are processed SIMULTANEOUSLY</span>
+<span class="comment">// Each "thread" knows its index via `instanceIndex`</span></code></pre>
+
+	<h2>Key TSL Concepts</h2>
+	<ul>
+		<li><strong>instancedArray()</strong> - Creates a GPU buffer from a typed array</li>
+		<li><strong>instanceIndex</strong> - Built-in variable: which thread am I? (0, 1, 2, ...)</li>
+		<li><strong>Fn()</strong> - Defines a TSL function (like a shader)</li>
+		<li><strong>.compute(N)</strong> - Request N total invocations (threads)</li>
+	</ul>
+
+	<h2>Understanding .compute(N) and Workgroups</h2>
+	<p>
+		GPUs execute work in groups called <strong>workgroups</strong>. By default, each workgroup has 64 threads.
+		The <code>.compute(N)</code> argument specifies the <em>total number of invocations</em> you need.
+		Three.js divides this by the workgroup size to determine how many workgroups to dispatch.
+	</p>
+	<pre><code><span class="comment">// .compute(5) with default workgroup size of 64:</span>
+<span class="comment">// → dispatches 1 workgroup (ceil(5/64) = 1)</span>
+<span class="comment">// → 64 threads run, but only 5 are "useful"</span>
+
+<span class="comment">// .compute(100) with default workgroup size of 64:</span>
+<span class="comment">// → dispatches 2 workgroups (ceil(100/64) = 2)</span>
+<span class="comment">// → 128 threads run, but only 100 are "useful"</span></code></pre>
+	<p>
+		<strong>Important:</strong> Extra threads beyond your data size will still run and may access
+		out-of-bounds memory! For production code, always guard with bounds checking.
+	</p>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Create input data and upload to GPU</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>]);
+<span class="keyword">const</span> buffer = <span class="function">instancedArray</span>(inputData, <span class="string">'float'</span>);
+
+<span class="comment">// Define compute shader: double each element</span>
+<span class="keyword">const</span> computeShader = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = buffer.<span class="function">element</span>(instanceIndex);
+    value.<span class="function">assign</span>(value.<span class="function">mul</span>(<span class="number">2</span>));
+})().<span class="function">compute</span>(inputData.length);
+
+<span class="comment">// Execute on GPU</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(computeShader);
+
+<span class="comment">// Read results back to JavaScript</span>
+<span class="keyword">const</span> resultBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(buffer.value);
+<span class="keyword">const</span> result = <span class="keyword">new</span> Float32Array(resultBuffer);
+console.<span class="function">log</span>(result); <span class="comment">// [2, 4, 6, 8, 10]</span></code></pre>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>What's Happening?</h2>
+	<ol>
+		<li>We create a Float32Array with 5 numbers: [1, 2, 3, 4, 5]</li>
+		<li>Upload it to the GPU as a storage buffer</li>
+		<li>Define a compute shader that multiplies each element by 2</li>
+		<li>The GPU runs 5 parallel threads, each processing one element</li>
+		<li>We read the results back: [2, 4, 6, 8, 10]</li>
+	</ol>
+
+
+
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 05: Parallel Filter Pattern</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			font-family: monospace;
+			line-height: 1.6;
+			color: #aaa;
+			white-space: pre-wrap;
+		}
+		.highlight { color: #4fc3f7; }
+	</style>
+
+  <link rel="modulepreload" crossorigin href="data:text/javascript;base64,KGZ1bmN0aW9uIHBvbHlmaWxsKCkgewogIGNvbnN0IHJlbExpc3QgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCJsaW5rIikucmVsTGlzdDsKICBpZiAocmVsTGlzdCAmJiByZWxMaXN0LnN1cHBvcnRzICYmIHJlbExpc3Quc3VwcG9ydHMoIm1vZHVsZXByZWxvYWQiKSkgewogICAgcmV0dXJuOwogIH0KICBmb3IgKGNvbnN0IGxpbmsgb2YgZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnbGlua1tyZWw9Im1vZHVsZXByZWxvYWQiXScpKSB7CiAgICBwcm9jZXNzUHJlbG9hZChsaW5rKTsKICB9CiAgbmV3IE11dGF0aW9uT2JzZXJ2ZXIoKG11dGF0aW9ucykgPT4gewogICAgZm9yIChjb25zdCBtdXRhdGlvbiBvZiBtdXRhdGlvbnMpIHsKICAgICAgaWYgKG11dGF0aW9uLnR5cGUgIT09ICJjaGlsZExpc3QiKSB7CiAgICAgICAgY29udGludWU7CiAgICAgIH0KICAgICAgZm9yIChjb25zdCBub2RlIG9mIG11dGF0aW9uLmFkZGVkTm9kZXMpIHsKICAgICAgICBpZiAobm9kZS50YWdOYW1lID09PSAiTElOSyIgJiYgbm9kZS5yZWwgPT09ICJtb2R1bGVwcmVsb2FkIikKICAgICAgICAgIHByb2Nlc3NQcmVsb2FkKG5vZGUpOwogICAgICB9CiAgICB9CiAgfSkub2JzZXJ2ZShkb2N1bWVudCwgeyBjaGlsZExpc3Q6IHRydWUsIHN1YnRyZWU6IHRydWUgfSk7CiAgZnVuY3Rpb24gZ2V0RmV0Y2hPcHRzKGxpbmspIHsKICAgIGNvbnN0IGZldGNoT3B0cyA9IHt9OwogICAgaWYgKGxpbmsuaW50ZWdyaXR5KSBmZXRjaE9wdHMuaW50ZWdyaXR5ID0gbGluay5pbnRlZ3JpdHk7CiAgICBpZiAobGluay5yZWZlcnJlclBvbGljeSkgZmV0Y2hPcHRzLnJlZmVycmVyUG9saWN5ID0gbGluay5yZWZlcnJlclBvbGljeTsKICAgIGlmIChsaW5rLmNyb3NzT3JpZ2luID09PSAidXNlLWNyZWRlbnRpYWxzIikKICAgICAgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gImluY2x1ZGUiOwogICAgZWxzZSBpZiAobGluay5jcm9zc09yaWdpbiA9PT0gImFub255bW91cyIpIGZldGNoT3B0cy5jcmVkZW50aWFscyA9ICJvbWl0IjsKICAgIGVsc2UgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gInNhbWUtb3JpZ2luIjsKICAgIHJldHVybiBmZXRjaE9wdHM7CiAgfQogIGZ1bmN0aW9uIHByb2Nlc3NQcmVsb2FkKGxpbmspIHsKICAgIGlmIChsaW5rLmVwKQogICAgICByZXR1cm47CiAgICBsaW5rLmVwID0gdHJ1ZTsKICAgIGNvbnN0IGZldGNoT3B0cyA9IGdldEZldGNoT3B0cyhsaW5rKTsKICAgIGZldGNoKGxpbmsuaHJlZiwgZmV0Y2hPcHRzKTsKICB9Cn0pKCk7Ci8vIyBzb3VyY2VNYXBwaW5nVVJMPW1vZHVsZXByZWxvYWQtcG9seWZpbGwtRGFLT2pocXQuanMubWFwCg==">
+  <link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CW8OjfM0.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-bIZ3TI3W.js">
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+  <script type="module" crossorigin src="../../assets/05-parallel-filter-_n6PI41W.js"></script>
+  <link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CIuLIuvN.js">
+  <link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-B9znDNZK.js">
+</head>
+<body>
+	<h1>TSL Learning 05: Parallel Filter Pattern</h1>
+
+	<p>
+		This is the <strong>most important pattern</strong> for our edge clipping problem.
+		We need to filter items in parallel: test each item, and if it passes, add it to an output buffer.
+	</p>
+
+	<h2>The Pattern</h2>
+	<div class="diagram">
+<span class="highlight">Input:</span>  [A, B, C, D, E, F, G, H]  (8 items to test)
+
+<span class="highlight">GPU threads run in parallel:</span>
+  Thread 0: test A → passes  → atomicAdd gets slot 0 → write A to output[0]
+  Thread 1: test B → fails   → (skip)
+  Thread 2: test C → passes  → atomicAdd gets slot 1 → write C to output[1]
+  Thread 3: test D → passes  → atomicAdd gets slot 2 → write D to output[2]
+  Thread 4: test E → fails   → (skip)
+  Thread 5: test F → passes  → atomicAdd gets slot 3 → write F to output[3]
+  Thread 6: test G → fails   → (skip)
+  Thread 7: test H → passes  → atomicAdd gets slot 4 → write H to output[4]
+
+<span class="highlight">Output:</span> [A, C, D, F, H]  (5 items that passed)
+<span class="highlight">Count:</span>  5
+	</div>
+
+	<h2>Why This Works</h2>
+	<p>
+		The key insight is using <code>atomicAdd</code> to get a unique output slot:
+	</p>
+	<pre><code><span class="keyword">const</span> outputIndex = <span class="function">atomicAdd</span>(counter, <span class="number">1</span>);  <span class="comment">// Returns current value, then increments</span>
+outputBuffer.<span class="function">element</span>(outputIndex).<span class="function">assign</span>(myValue);</code></pre>
+	<p>
+		Each thread that passes the test gets a <strong>unique slot</strong> in the output buffer.
+		The order might vary (thread execution order isn't guaranteed), but no data is lost.
+	</p>
+
+	<h2>Example: Filter Positive Numbers</h2>
+	<p>Given an array of numbers, output only the positive ones.</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, If, instancedArray, instanceIndex, uint, atomicAdd } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Input data (mix of positive, negative, zero)</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([-<span class="number">5</span>, <span class="number">3</span>, <span class="number">0</span>, <span class="number">7</span>, -<span class="number">2</span>, <span class="number">1</span>, -<span class="number">1</span>, <span class="number">8</span>, <span class="number">0</span>, <span class="number">4</span>, -<span class="number">3</span>, <span class="number">2</span>]);
+<span class="keyword">const</span> inputBuffer = <span class="function">instancedArray</span>(inputData, <span class="string">'float'</span>);
+
+<span class="comment">// Output buffer (allocate max possible size)</span>
+<span class="keyword">const</span> outputBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Float32Array(inputData.length), <span class="string">'float'</span>);
+
+<span class="comment">// Atomic counter (initialized to 0)</span>
+<span class="keyword">const</span> counterBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array([<span class="number">0</span>]), <span class="string">'uint'</span>).<span class="function">toAtomic</span>();
+
+<span class="comment">// Filter kernel: keep only positive numbers</span>
+<span class="keyword">const</span> filterKernel = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
+
+    <span class="function">If</span>(value.<span class="function">greaterThan</span>(<span class="number">0</span>), () => {
+        <span class="comment">// Get a unique output slot (atomicAdd returns old value)</span>
+        <span class="keyword">const</span> outputIndex = <span class="function">atomicAdd</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>), <span class="function">uint</span>(<span class="number">1</span>));
+        outputBuffer.<span class="function">element</span>(outputIndex).<span class="function">assign</span>(value);
+    });
+})().<span class="function">compute</span>(inputData.length);
+
+<span class="comment">// Execute</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(filterKernel);
+
+<span class="comment">// Read results</span>
+<span class="keyword">const</span> countBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(counterBuffer.value);
+<span class="keyword">const</span> count = <span class="keyword">new</span> Uint32Array(countBuffer)[<span class="number">0</span>];
+
+<span class="keyword">const</span> resultBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(outputBuffer.value);
+<span class="keyword">const</span> results = <span class="keyword">new</span> Float32Array(resultBuffer).<span class="function">slice</span>(<span class="number">0</span>, count);
+
+console.<span class="function">log</span>(results); <span class="comment">// [3, 7, 1, 8, 4, 2] (order may vary)</span></code></pre>
+
+	<h2>Connection to Edge Clipping</h2>
+	<p>
+		The edge clipping problem is essentially a parallel filter:
+	</p>
+	<ul>
+		<li><strong>Input:</strong> Candidate (edge, triangle) pairs</li>
+		<li><strong>Test:</strong> Does this edge overlap this triangle when projected?</li>
+		<li><strong>Output:</strong> Only the overlaps that exist</li>
+	</ul>
+	<p>
+		Instead of filtering numbers, we filter edge-triangle pairs and output overlap ranges.
+	</p>
+
+
+
+</body>
+</html>

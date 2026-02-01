@@ -1,0 +1,50 @@
+<html lang="en">
+	<head>
+		<title>three.js webgpu - compute particles rain</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+		<link rel="modulepreload" crossorigin href="data:text/javascript;base64,KGZ1bmN0aW9uIHBvbHlmaWxsKCkgewogIGNvbnN0IHJlbExpc3QgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCJsaW5rIikucmVsTGlzdDsKICBpZiAocmVsTGlzdCAmJiByZWxMaXN0LnN1cHBvcnRzICYmIHJlbExpc3Quc3VwcG9ydHMoIm1vZHVsZXByZWxvYWQiKSkgewogICAgcmV0dXJuOwogIH0KICBmb3IgKGNvbnN0IGxpbmsgb2YgZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnbGlua1tyZWw9Im1vZHVsZXByZWxvYWQiXScpKSB7CiAgICBwcm9jZXNzUHJlbG9hZChsaW5rKTsKICB9CiAgbmV3IE11dGF0aW9uT2JzZXJ2ZXIoKG11dGF0aW9ucykgPT4gewogICAgZm9yIChjb25zdCBtdXRhdGlvbiBvZiBtdXRhdGlvbnMpIHsKICAgICAgaWYgKG11dGF0aW9uLnR5cGUgIT09ICJjaGlsZExpc3QiKSB7CiAgICAgICAgY29udGludWU7CiAgICAgIH0KICAgICAgZm9yIChjb25zdCBub2RlIG9mIG11dGF0aW9uLmFkZGVkTm9kZXMpIHsKICAgICAgICBpZiAobm9kZS50YWdOYW1lID09PSAiTElOSyIgJiYgbm9kZS5yZWwgPT09ICJtb2R1bGVwcmVsb2FkIikKICAgICAgICAgIHByb2Nlc3NQcmVsb2FkKG5vZGUpOwogICAgICB9CiAgICB9CiAgfSkub2JzZXJ2ZShkb2N1bWVudCwgeyBjaGlsZExpc3Q6IHRydWUsIHN1YnRyZWU6IHRydWUgfSk7CiAgZnVuY3Rpb24gZ2V0RmV0Y2hPcHRzKGxpbmspIHsKICAgIGNvbnN0IGZldGNoT3B0cyA9IHt9OwogICAgaWYgKGxpbmsuaW50ZWdyaXR5KSBmZXRjaE9wdHMuaW50ZWdyaXR5ID0gbGluay5pbnRlZ3JpdHk7CiAgICBpZiAobGluay5yZWZlcnJlclBvbGljeSkgZmV0Y2hPcHRzLnJlZmVycmVyUG9saWN5ID0gbGluay5yZWZlcnJlclBvbGljeTsKICAgIGlmIChsaW5rLmNyb3NzT3JpZ2luID09PSAidXNlLWNyZWRlbnRpYWxzIikKICAgICAgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gImluY2x1ZGUiOwogICAgZWxzZSBpZiAobGluay5jcm9zc09yaWdpbiA9PT0gImFub255bW91cyIpIGZldGNoT3B0cy5jcmVkZW50aWFscyA9ICJvbWl0IjsKICAgIGVsc2UgZmV0Y2hPcHRzLmNyZWRlbnRpYWxzID0gInNhbWUtb3JpZ2luIjsKICAgIHJldHVybiBmZXRjaE9wdHM7CiAgfQogIGZ1bmN0aW9uIHByb2Nlc3NQcmVsb2FkKGxpbmspIHsKICAgIGlmIChsaW5rLmVwKQogICAgICByZXR1cm47CiAgICBsaW5rLmVwID0gdHJ1ZTsKICAgIGNvbnN0IGZldGNoT3B0cyA9IGdldEZldGNoT3B0cyhsaW5rKTsKICAgIGZldGNoKGxpbmsuaHJlZiwgZmV0Y2hPcHRzKTsKICB9Cn0pKCk7Ci8vIyBzb3VyY2VNYXBwaW5nVVJMPW1vZHVsZXByZWxvYWQtcG9seWZpbGwtRGFLT2pocXQuanMubWFwCg==">
+		<link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CW8OjfM0.js">
+		<link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-bIZ3TI3W.js">
+		<link rel="modulepreload" crossorigin href="../../assets/three.module-Jt-9Ru2o-Dsoc_b5d.js">
+		<link rel="modulepreload" crossorigin href="../../assets/Inspector-Bw7mdRhQ-BIJcgrnr.js">
+		<link rel="modulepreload" crossorigin href="../../assets/OrbitControls-BwrKLbo_-Cy9lI1W6.js">
+		<link rel="modulepreload" crossorigin href="../../assets/BufferGeometryUtils-D7RCbN6D-Cpo6W51B.js">
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+		<script type="module" crossorigin src="../../assets/rain-Cbl3x3qJ.js"></script>
+		<link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt.js">
+		<link rel="modulepreload" crossorigin href="../../assets/modulepreload-polyfill-DaKOjhqt-DaKOjhqt.js">
+		<link rel="modulepreload" crossorigin href="../../assets/three.core-CntQ0PPt-CIuLIuvN.js">
+		<link rel="modulepreload" crossorigin href="../../assets/three.tsl-CucFAqAO-B9znDNZK.js">
+		<link rel="modulepreload" crossorigin href="../../assets/three.module-Jt-9Ru2o-vl5c8U10.js">
+		<link rel="modulepreload" crossorigin href="../../assets/Inspector-DrFBWtkP-DKZg1P_w.js">
+		<link rel="modulepreload" crossorigin href="../../assets/OrbitControls-BwrKLbo_-CIX7YvzQ.js">
+		<link rel="modulepreload" crossorigin href="../../assets/BufferGeometryUtils-D7RCbN6D-DkrlerKJ.js">
+		<link rel="stylesheet" crossorigin href="../../assets/Inspector-DrFBWtkP-DrFBWtkP.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Compute Rain</span>
+			</div>
+
+			<small>Compatible with native lights and shadows using post-processing pass.</small>
+		</div>
+
+
+
+	</body>
+</html>

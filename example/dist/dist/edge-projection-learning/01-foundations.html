@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>01: Foundations - What Are We Drawing?</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+			line-height: 1.6;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 40px; }
+		h3 { color: #fff; margin-top: 30px; }
+		a { color: #4fc3f7; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; font-family: 'Consolas', monospace; }
+		.inline-code {
+			background: #0d0d1a;
+			padding: 2px 6px;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #333;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre;
+			line-height: 1.4;
+			overflow-x: auto;
+			white-space: pre-wrap;
+		}
+		.highlight-box {
+			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #4fc3f7;
+			margin: 20px 0;
+		}
+		.highlight-box h4 {
+			margin: 0 0 10px 0;
+			color: #4fc3f7;
+		}
+		.nav {
+			display: flex;
+			justify-content: space-between;
+			margin-top: 40px;
+			padding-top: 20px;
+			border-top: 1px solid #333;
+		}
+		.nav a {
+			padding: 10px 20px;
+			background: #0d0d1a;
+			border-radius: 6px;
+			text-decoration: none;
+		}
+		.nav a:hover { background: #1a2a3a; }
+		.two-column {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 20px;
+			margin: 20px 0;
+		}
+		.column {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #333;
+		}
+		.column h4 {
+			margin: 0 0 10px 0;
+			color: #81c784;
+		}
+		img, svg {
+			max-width: 100%;
+			border-radius: 8px;
+		}
+		canvas {
+			background: #0d0d1a;
+			border-radius: 8px;
+			border: 1px solid #333;
+		}
+		#demo-container {
+			display: flex;
+			gap: 20px;
+			margin: 20px 0;
+		}
+		#demo-container canvas {
+			flex: 1;
+		}
+		#demo-controls {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+		}
+		.slider-group {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+		}
+		.slider-group label {
+			display: block;
+			margin-bottom: 5px;
+			color: #81c784;
+		}
+		.slider-group input[type="range"] {
+			width: 100%;
+		}
+		.slider-group .value {
+			text-align: right;
+			font-family: monospace;
+			color: #4fc3f7;
+		}
+	</style>
+</head>
+<body>
+	<a href="index.html">← Back to Index</a>
+
+	<h1>01: Foundations - What Are We Drawing?</h1>
+
+	<p>
+		Before diving into code, let's understand <strong>what</strong> we're trying to achieve.
+		The goal of three-edge-projection is to convert a 3D model into a 2D line drawing,
+		like an architectural blueprint or technical illustration.
+	</p>
+
+	<h2>The Problem: 3D → 2D</h2>
+
+	<p>
+		A 3D mesh is made of triangles. When we look at it from above (orthographic projection),
+		we don't want to draw <em>every</em> triangle edge - that would be a mess. Instead, we want
+		to draw only the <strong>meaningful</strong> edges:
+	</p>
+
+	<div class="two-column">
+		<div class="column">
+			<h4>All Triangle Edges</h4>
+			<div class="diagram" style="font-size: 12px;">     ___________
+    /\    /\    /\
+   /  \  /  \  /  \
+  /____\/____\/____\
+  \    /\    /\    /
+   \  /  \  /  \  /
+    \/____\/____\/
+
+Too many lines - hard to read!</div>
+		</div>
+		<div class="column">
+			<h4>Meaningful Edges Only</h4>
+			<div class="diagram" style="font-size: 12px;">     ___________
+    |           |
+    |           |
+    |___________|
+
+Clean and readable!</div>
+		</div>
+	</div>
+
+	<h2>Two Types of Important Edges</h2>
+
+	<h3>1. Hard Edges (Angle-Based)</h3>
+
+	<p>
+		A <strong>hard edge</strong> is where two faces meet at a sharp angle. Think of the corner
+		of a box - the faces meet at 90°, creating a visible crease.
+	</p>
+
+	<p>
+		The library uses an <span class="inline-code">angleThreshold</span> (default: 50°) to decide
+		what counts as "sharp enough". If the angle between face normals exceeds this threshold,
+		the edge is drawn.
+	</p>
+
+	<pre><code><span class="comment">// The math: compare face normals</span>
+<span class="keyword">const</span> dotProduct = normalA.<span class="function">dot</span>(normalB);
+<span class="keyword">const</span> angle = Math.<span class="function">acos</span>(dotProduct);  <span class="comment">// in radians</span>
+
+<span class="comment">// If angle > threshold, it's a hard edge</span>
+<span class="keyword">if</span> (angle > angleThreshold) {
+    <span class="comment">// Draw this edge!</span>
+}</code></pre>
+
+	<h3>2. Silhouette Edges (View-Dependent)</h3>
+
+	<p>
+		A <strong>silhouette edge</strong> is where the surface "turns away" from the viewer.
+		One face points toward the camera, the other points away. These edges define the outline
+		of the object.
+	</p>
+
+	<div class="diagram">
+Top-Down Projection (looking down Y axis):
+
+    Camera/Projection Direction
+              ↓
+              ↓
+    ┌─────────┴─────────┐
+    │    VISIBLE        │
+    │    (facing up)    │
+    ├───────────────────┤  ← Silhouette Edge!
+    │    HIDDEN         │
+    │    (facing down)  │
+    └───────────────────┘
+
+The edge between visible and hidden faces = silhouette
+</div>
+
+	<p>
+		To detect silhouettes, we check if the two faces are on opposite sides of the projection plane:
+	</p>
+
+	<pre><code><span class="comment">// projectionDir is typically (0, -1, 0) for top-down</span>
+<span class="keyword">const</span> dotA = normalA.<span class="function">dot</span>(projectionDir);
+<span class="keyword">const</span> dotB = normalB.<span class="function">dot</span>(projectionDir);
+
+<span class="comment">// If signs differ, faces point in opposite directions</span>
+<span class="keyword">if</span> (Math.<span class="function">sign</span>(dotA) !== Math.<span class="function">sign</span>(dotB)) {
+    <span class="comment">// This is a silhouette edge!</span>
+}</code></pre>
+
+	<div class="highlight-box">
+		<h4>Key Insight</h4>
+		<p>
+			An edge is drawn if it's <strong>either</strong> a hard edge (sharp angle) <strong>or</strong>
+			a silhouette edge (outline). Many edges are both! The corner of a box viewed from an angle
+			is both sharp AND an outline.
+		</p>
+	</div>
+
+	<h2>Visible vs Hidden Lines</h2>
+
+	<p>
+		Once we know which edges to draw, we need to figure out which parts are <strong>visible</strong>
+		(in front of everything) and which are <strong>hidden</strong> (obscured by geometry).
+	</p>
+
+	<div class="diagram">
+Side View:
+                    ┌───────┐
+                    │       │  Box in front
+    ────────────────┼───────┼────────────────  Edge we're testing
+                    │       │
+                    └───────┘
+
+Top View:
+    ════════════════╬═══════╬════════════════
+        visible     hidden   visible
+
+    Result: Three line segments
+    - Left segment: VISIBLE
+    - Middle segment: HIDDEN (behind box)
+    - Right segment: VISIBLE
+</div>
+
+	<p>
+		This is the most computationally expensive part of the algorithm. For every edge,
+		we need to check every triangle that might be in front of it. This is where
+		<strong>BVH (Bounding Volume Hierarchy)</strong> acceleration becomes essential.
+	</p>
+
+	<h2>What is a BVH?</h2>
+
+	<p>
+		A <strong>Bounding Volume Hierarchy</strong> is a tree structure that groups nearby geometry
+		together. Instead of checking every edge against every triangle (O(n²) complexity), we can
+		quickly skip large groups of triangles that are nowhere near our edge.
+	</p>
+
+	<div class="diagram">
+Without BVH:                          With BVH:
+
+Check edge against:                   Check edge against:
+- Triangle 1    ✗                     - Root box: intersects? YES
+- Triangle 2    ✗                       - Left half: intersects? NO → skip 500 triangles!
+- Triangle 3    ✗                       - Right half: intersects? YES
+- Triangle 4    ✗                         - Check only nearby triangles
+- ...
+- Triangle 1000 ✗                     Result: Check ~20 triangles instead of 1000
+
+O(n²) = 1,000,000 checks              O(n log n) = ~10,000 checks
+</div>
+
+	<p>
+		The library uses BVH in two places:
+	</p>
+	<ul>
+		<li><strong>three-mesh-bvh</strong>: For accelerating triangle intersection queries</li>
+		<li><strong>LineObjectsBVH</strong>: A custom BVH for the extracted edges themselves</li>
+	</ul>
+
+	<h2>The Complete Pipeline</h2>
+
+	<p>Now we can understand the full edge generation pipeline:</p>
+
+	<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                         INPUT                                   │
+│                    3D Mesh (triangles)                          │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│              STEP 1: Generate Candidate Edges                   │
+│                                                                 │
+│  For each pair of adjacent triangles:                           │
+│    - Compare face normals (hard edge test)                      │
+│    - Compare projection directions (silhouette test)            │
+│    - If either passes → add edge to list                        │
+│                                                                 │
+│  Output: List of candidate line segments (edges)                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                   STEP 2: Pre-filter Edges                      │
+│                                                                 │
+│  Remove edges that definitely won't be visible:                 │
+│    - Back-facing edges                                          │
+│    - Edges outside view frustum                                 │
+│    - (Optional) Intersection edges if enabled                   │
+│                                                                 │
+│  Output: Filtered list of edges                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    STEP 3: Build Line BVH                       │
+│                                                                 │
+│  Create a BVH structure for all edges:                          │
+│    - Enables fast spatial queries                               │
+│    - Groups nearby edges together                               │
+│                                                                 │
+│  Output: LineObjectsBVH                                         │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  STEP 4: BVHcast Overlaps                       │
+│                                                                 │
+│  Compare Line BVH against Mesh BVH:                             │
+│    - Find edges that might be behind triangles                  │
+│    - Project both to XZ plane                                   │
+│    - Calculate overlap regions                                  │
+│    - Mark overlapping portions as "hidden"                      │
+│                                                                 │
+│  Output: Edges with overlap ranges [visible, hidden, ...]       │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│               STEP 5: Convert Overlaps to Lines                 │
+│                                                                 │
+│  Convert overlap ranges to line segments:                       │
+│    - Visible ranges → visible line geometry                     │
+│    - Hidden ranges → hidden line geometry (dashed)              │
+│                                                                 │
+│  Output: Two BufferGeometry objects                             │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                         OUTPUT                                  │
+│              visibleLineGeometry + hiddenLineGeometry           │
+└─────────────────────────────────────────────────────────────────┘
+</div>
+
+	<h2>Key Configuration Options</h2>
+
+	<pre><code><span class="keyword">const</span> generator = <span class="keyword">new</span> ProjectionGenerator();
+
+<span class="comment">// How sharp an angle must be to create a hard edge</span>
+generator.angleThreshold = <span class="number">50</span> * Math.PI / <span class="number">180</span>;  <span class="comment">// 50 degrees (default)</span>
+
+<span class="comment">// Whether to detect intersection edges</span>
+generator.includeIntersectionEdges = <span class="keyword">true</span>;  <span class="comment">// default</span>
+
+<span class="comment">// Time budget per iteration (for responsive UI)</span>
+generator.iterationTime = <span class="number">30</span>;  <span class="comment">// 30ms default</span></code></pre>
+
+	<div class="highlight-box">
+		<h4>Coming Up Next</h4>
+		<p>
+			In the next lesson, we'll dive into <strong>Steps 1-2: Generating Candidate Edges</strong> and see exactly
+			how the EdgeGenerator finds hard and silhouette edges. We'll look at the vertex hashing
+			algorithm and how edges are matched between triangles.
+		</p>
+	</div>
+
+	<div class="nav">
+		<a href="index.html">← Index</a>
+		<a href="02-edge-extraction.html">Next: Edge Extraction →</a>
+	</div>
+
+</body>
+</html>

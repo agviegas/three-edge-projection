@@ -46,6 +46,7 @@
 			white-space: pre;
 			line-height: 1.4;
 			overflow-x: auto;
+			white-space: pre-wrap;
 		}
 		.highlight-box {
 			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
@@ -138,10 +139,11 @@ Side View:                              Top View (projected):
 
      Camera looking down                    ┌───────┐
            ↓                                │ Box   │
-    ═══════════════  Edge                   │   ═══════════════ Edge
+		   			═════ ═ ═ ═ ═══════ Edge
            ┌───┐                            │       │
            │Box│                            └───────┘
            └───┘
+	═══════════════  Edge 
 
 The edge passes behind the box. When projected to 2D:
 - Left part: VISIBLE (in front of box)

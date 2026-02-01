@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning Path</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; margin-bottom: 10px; }
+		.subtitle { color: #888; margin-bottom: 30px; }
+		.lesson {
+			background: #0d0d1a;
+			border: 1px solid #333;
+			border-radius: 8px;
+			padding: 20px;
+			margin: 15px 0;
+			transition: all 0.2s;
+		}
+		.lesson:hover {
+			border-color: #4fc3f7;
+			transform: translateX(5px);
+		}
+		.lesson a {
+			color: #4fc3f7;
+			text-decoration: none;
+			font-size: 18px;
+			font-weight: 600;
+		}
+		.lesson a:hover {
+			text-decoration: underline;
+		}
+		.lesson p {
+			color: #aaa;
+			margin: 10px 0 0 0;
+		}
+		.lesson-number {
+			display: inline-block;
+			background: #4fc3f7;
+			color: #000;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			text-align: center;
+			line-height: 28px;
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		.concepts {
+			margin-top: 10px;
+		}
+		.concept {
+			display: inline-block;
+			background: #1a2a3a;
+			color: #81c784;
+			padding: 3px 8px;
+			border-radius: 4px;
+			font-size: 12px;
+			margin: 2px;
+		}
+		.section-title {
+			color: #81c784;
+			margin-top: 40px;
+			padding-bottom: 10px;
+			border-bottom: 1px solid #333;
+		}
+		.coming-soon {
+			opacity: 0.5;
+		}
+		.coming-soon a {
+			color: #666;
+			pointer-events: none;
+		}
+	</style>
+</head>
+<body>
+	<h1>🚀 TSL Learning Path</h1>
+	<p class="subtitle">Learn WebGPU compute shaders with Three.js TSL, step by step</p>
+
+	<h2 class="section-title">Fundamentals</h2>
+
+	<div class="lesson">
+		<a href="01-hello-compute.html">
+			<span class="lesson-number">1</span>Hello Compute
+		</a>
+		<p>Your first GPU compute shader. Learn the basic structure: buffers, instanceIndex, and compute().</p>
+		<div class="concepts">
+			<span class="concept">instancedArray</span>
+			<span class="concept">instanceIndex</span>
+			<span class="concept">Fn()</span>
+			<span class="concept">.compute()</span>
+		</div>
+	</div>
+
+	<div class="lesson">
+		<a href="02-vectors-and-math.html">
+			<span class="lesson-number">2</span>Vectors and Math
+		</a>
+		<p>Working with vec2, vec3, vec4. Math operations, swizzling, and computing distances.</p>
+		<div class="concepts">
+			<span class="concept">vec3</span>
+			<span class="concept">.add() .sub() .mul()</span>
+			<span class="concept">.length()</span>
+			<span class="concept">.xyz swizzling</span>
+		</div>
+	</div>
+
+	<div class="lesson">
+		<a href="03-conditionals.html">
+			<span class="lesson-number">3</span>Conditionals (If/Else)
+		</a>
+		<p>Branching logic in TSL. Comparison operators and the If/ElseIf/Else syntax.</p>
+		<div class="concepts">
+			<span class="concept">If()</span>
+			<span class="concept">.greaterThan()</span>
+			<span class="concept">.and() .or()</span>
+			<span class="concept">.toVar()</span>
+		</div>
+	</div>
+
+	<div class="lesson">
+		<a href="04-atomics.html">
+			<span class="lesson-number">4</span>Atomic Operations
+		</a>
+		<p>Thread-safe operations for parallel programming. Essential for accumulating results.</p>
+		<div class="concepts">
+			<span class="concept">atomicAdd</span>
+			<span class="concept">atomicStore</span>
+			<span class="concept">struct</span>
+			<span class="concept">race conditions</span>
+		</div>
+	</div>
+
+	<div class="lesson">
+		<a href="05-parallel-filter.html">
+			<span class="lesson-number">5</span>Parallel Filter Pattern
+		</a>
+		<p>The key pattern: test items in parallel, output only those that pass. Uses atomicAdd for indexing.</p>
+		<div class="concepts">
+			<span class="concept">parallel filter</span>
+			<span class="concept">atomicAdd for slots</span>
+			<span class="concept">output compaction</span>
+		</div>
+	</div>
+
+	<h2 class="section-title">Geometry</h2>
+
+	<div class="lesson">
+		<a href="06-geometry-test.html">
+			<span class="lesson-number">6</span>Geometry Test: Point in Triangle
+		</a>
+		<p>Apply TSL to actual geometry. Test if 2D points are inside a triangle using cross products.</p>
+		<div class="concepts">
+			<span class="concept">cross product</span>
+			<span class="concept">point-in-triangle</span>
+			<span class="concept">select()</span>
+		</div>
+	</div>
+
+	<h2 class="section-title">Coming Soon</h2>
+
+	<div class="lesson coming-soon">
+		<a href="#">
+			<span class="lesson-number">7</span>Line-Triangle Intersection
+		</a>
+		<p>Test if a line segment intersects a triangle. Foundation for edge clipping.</p>
+		<div class="concepts">
+			<span class="concept">plane intersection</span>
+			<span class="concept">barycentric coords</span>
+		</div>
+	</div>
+
+	<div class="lesson coming-soon">
+		<a href="#">
+			<span class="lesson-number">8</span>Putting It Together: Edge Clipping
+		</a>
+		<p>Combine everything: parallel filter + geometry tests = GPU edge clipping!</p>
+		<div class="concepts">
+			<span class="concept">edge-triangle overlap</span>
+			<span class="concept">projection</span>
+		</div>
+	</div>
+
+	<hr style="margin-top: 40px; border-color: #333;">
+	<p style="color: #666; text-align: center;">
+		Open your browser's console (F12) to see any errors.<br>
+		These examples require WebGPU (Chrome 113+).
+	</p>
+</body>
+</html>

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>04: Occlusion & Clipping - What's Visible?</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+			line-height: 1.6;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 40px; }
+		h3 { color: #fff; margin-top: 30px; }
+		a { color: #4fc3f7; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; font-family: 'Consolas', monospace; }
+		.inline-code {
+			background: #0d0d1a;
+			padding: 2px 6px;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #333;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre;
+			line-height: 1.4;
+			overflow-x: auto;
+		}
+		.highlight-box {
+			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #4fc3f7;
+			margin: 20px 0;
+		}
+		.highlight-box h4 {
+			margin: 0 0 10px 0;
+			color: #4fc3f7;
+		}
+		.warning-box {
+			background: linear-gradient(135deg, #3a2a1a 0%, #1a0d0d 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #f7a44f;
+			margin: 20px 0;
+		}
+		.warning-box h4 {
+			margin: 0 0 10px 0;
+			color: #f7a44f;
+		}
+		.nav {
+			display: flex;
+			justify-content: space-between;
+			margin-top: 40px;
+			padding-top: 20px;
+			border-top: 1px solid #333;
+		}
+		.nav a {
+			padding: 10px 20px;
+			background: #0d0d1a;
+			border-radius: 6px;
+			text-decoration: none;
+		}
+		.nav a:hover { background: #1a2a3a; }
+		.step {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			border: 1px solid #333;
+		}
+		.step-number {
+			background: #4fc3f7;
+			color: #000;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		.step h4 {
+			display: inline;
+			color: #fff;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 20px 0;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 10px;
+			text-align: left;
+		}
+		th { background: #0d0d1a; color: #4fc3f7; }
+		tr:nth-child(even) { background: rgba(0,0,0,0.2); }
+	</style>
+</head>
+<body>
+	<a href="index.html">← Back to Index</a>
+
+	<h1>04: Occlusion & Clipping - What's Visible?</h1>
+
+	<p>
+		This is the <strong>most computationally expensive</strong> step in the pipeline.
+		For every edge we've extracted, we need to determine which portions are visible
+		(in front of all geometry) and which are hidden (behind other triangles).
+	</p>
+
+	<h2>The Problem</h2>
+
+	<div class="diagram">
+Side View:                              Top View (projected):
+
+     Camera looking down                    ┌───────┐
+           ↓                                │ Box   │
+    ═══════════════  Edge                   │   ═══════════════ Edge
+           ┌───┐                            │       │
+           │Box│                            └───────┘
+           └───┘
+
+The edge passes behind the box. When projected to 2D:
+- Left part: VISIBLE (in front of box)
+- Middle part: HIDDEN (behind box)
+- Right part: VISIBLE (in front of box)
+
+We need to split the edge into 3 segments!
+</div>
+
+	<h2>The Algorithm Overview</h2>
+
+	<ol>
+		<li>Build a BVH for all extracted edges (<span class="inline-code">LineObjectsBVH</span>)</li>
+		<li>For each triangle in the scene, find nearby edges using BVH</li>
+		<li>For each edge-triangle pair, calculate the "hidden" portion</li>
+		<li>Store hidden ranges as parametric coordinates [t0, t1]</li>
+		<li>Merge overlapping hidden ranges</li>
+		<li>Generate visible segments from gaps between hidden ranges</li>
+	</ol>
+
+	<h2>Step-by-Step Breakdown</h2>
+
+	<div class="step">
+		<span class="step-number">1</span>
+		<h4>LineObjectsBVH - A BVH for Lines</h4>
+		<p style="margin-top: 15px;">
+			The library creates a custom BVH that stores line segments instead of triangles.
+			This allows efficient spatial queries like "which edges are near this triangle?".
+		</p>
+		<pre><code><span class="comment">// LineObjectsBVH extends MeshBVH with custom bounds calculation</span>
+<span class="comment">// Each "primitive" is a Line3 instead of a triangle</span>
+<span class="keyword">class</span> LineObjectsBVH <span class="keyword">extends</span> MeshBVH {
+    <span class="function">writePrimitiveBounds</span>(nodeIndex, target) {
+        <span class="keyword">const</span> line = <span class="keyword">this</span>.lines[nodeIndex];
+        <span class="comment">// Set bounding box from line start/end points</span>
+        target[<span class="number">0</span>] = Math.<span class="function">min</span>(line.start.x, line.end.x);
+        target[<span class="number">1</span>] = Math.<span class="function">min</span>(line.start.y, line.end.y);
+        <span class="comment">// ... etc</span>
+    }
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">2</span>
+		<h4>BVH Cast - Finding Edge-Triangle Pairs</h4>
+		<p style="margin-top: 15px;">
+			We use <span class="inline-code">edgesBvh.bvhcast(meshBvh)</span> to efficiently find
+			all pairs of (edge, triangle) that might interact.
+		</p>
+		<pre><code>edgesBvh.<span class="function">bvhcast</span>(meshBvh, matrixWorld, {
+    <span class="function">intersectsRanges</span>: (edgeOffset, edgeCount, triOffset, triCount) => {
+        <span class="comment">// Called when a group of edges might interact with a group of triangles</span>
+        <span class="comment">// We check each combination in these ranges</span>
+    }
+});</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">3</span>
+		<h4>Back-Face Culling</h4>
+		<p style="margin-top: 15px;">
+			Triangles facing away from the camera don't occlude anything. We skip them based
+			on the material's <span class="inline-code">side</span> property.
+		</p>
+		<pre><code><span class="comment">// Check if triangle faces up (toward camera) or down (away)</span>
+<span class="keyword">const</span> faceUp = triangle.plane.normal.<span class="function">dot</span>(UP_VECTOR) > <span class="number">0</span>;
+
+<span class="comment">// With FrontSide material, back-facing triangles don't occlude</span>
+<span class="keyword">if</span> (side !== DoubleSide) {
+    <span class="keyword">if</span> (faceUp === (side === BackSide)) {
+        <span class="keyword">continue</span>;  <span class="comment">// Skip this triangle</span>
+    }
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">4</span>
+		<h4>Y-Bounds Check</h4>
+		<p style="margin-top: 15px;">
+			Quick rejection: if the triangle is entirely below the edge, it can't occlude it.
+		</p>
+		<pre><code><span class="keyword">const</span> highestTriangleY = Math.<span class="function">max</span>(tri.a.y, tri.b.y, tri.c.y);
+<span class="keyword">const</span> lowestLineY = Math.<span class="function">min</span>(line.start.y, line.end.y);
+
+<span class="comment">// Triangle entirely below the edge? Can't occlude!</span>
+<span class="keyword">if</span> (highestTriangleY &lt;= lowestLineY) {
+    <span class="keyword">continue</span>;
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">5</span>
+		<h4>Trim to Beneath Triangle Plane</h4>
+		<p style="margin-top: 15px;">
+			Only the portion of the edge that's <em>below</em> the triangle's plane can be occluded.
+			We clip the edge to this portion.
+		</p>
+		<div class="diagram">
+Side View:
+
+    Triangle plane ─────────────────────────
+                            ╲
+                 Edge ═══════╳════════════
+                            ╱
+                   Only this part
+                   can be occluded!
+</div>
+		<pre><code><span class="comment">// trimToBeneathTriPlane returns the portion of the line</span>
+<span class="comment">// that is below (behind) the triangle's plane</span>
+<span class="keyword">if</span> (!<span class="function">trimToBeneathTriPlane</span>(triangle, line, beneathLine)) {
+    <span class="keyword">continue</span>;  <span class="comment">// Edge is entirely above triangle</span>
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">6</span>
+		<h4>Calculate Projected Overlap</h4>
+		<p style="margin-top: 15px;">
+			Project both the edge and triangle to the XZ plane (flatten Y to 0).
+			Find where the edge overlaps the triangle in 2D.
+		</p>
+		<div class="diagram">
+3D View:                                2D Projection (XZ plane):
+
+        Triangle                              Triangle
+       /\                                    /\
+      /  \                                  /  \
+     /    \                                /    \
+    /══════\════ Edge                     /══════\════ Edge
+   /________\                            /________\
+                                             ↑↑↑↑
+                                         Overlap region!
+</div>
+		<p style="margin-top: 15px;">
+			The algorithm creates a plane perpendicular to the edge, finds where triangle
+			edges intersect this plane, and calculates the overlap range.
+		</p>
+	</div>
+
+	<div class="step">
+		<span class="step-number">7</span>
+		<h4>Store as Parametric Range</h4>
+		<p style="margin-top: 15px;">
+			The overlap is stored as [t0, t1] where t is a value from 0 to 1 along the edge.
+			t=0 is the start, t=1 is the end.
+		</p>
+		<pre><code><span class="comment">// Convert overlap line back to parametric coordinates</span>
+<span class="keyword">const</span> t0 = overlapStart.<span class="function">distanceTo</span>(line.start) / lineLength;
+<span class="keyword">const</span> t1 = overlapEnd.<span class="function">distanceTo</span>(line.start) / lineLength;
+
+<span class="comment">// Store in the hidden overlap map</span>
+hiddenOverlapMap[edgeIndex].<span class="function">push</span>([t0, t1]);</code></pre>
+	</div>
+
+	<h2>Merging Overlapping Ranges</h2>
+
+	<p>
+		Multiple triangles might occlude the same edge. We need to merge overlapping ranges
+		to avoid duplicate hidden segments.
+	</p>
+
+	<div class="diagram">
+Edge with multiple occluding triangles:
+
+Edge:     ════════════════════════════════════════════
+          0                                           1
+
+Triangle A occludes:     [0.2 ────── 0.5]
+Triangle B occludes:              [0.4 ────── 0.7]
+Triangle C occludes:                          [0.65 ─ 0.75]
+
+After merging:           [0.2 ───────────────── 0.75]
+
+Visible:  [0 ── 0.2]                            [0.75 ── 1]
+Hidden:              [0.2 ───────────────── 0.75]
+</div>
+
+	<p>
+		The <span class="inline-code">insertOverlap()</span> function uses binary search to efficiently
+		find the insertion point and merges with any overlapping existing ranges:
+	</p>
+
+	<pre><code><span class="keyword">function</span> <span class="function">insertOverlap</span>(result, overlapsTarget) {
+    <span class="keyword">let</span> [start, end] = result;
+
+    <span class="comment">// Binary search to find insertion point</span>
+    <span class="keyword">let</span> left = <span class="number">0</span>, right = overlapsTarget.length;
+    <span class="keyword">while</span> (left &lt; right) {
+        <span class="keyword">const</span> mid = (left + right) >>> <span class="number">1</span>;
+        <span class="keyword">if</span> (overlapsTarget[mid][<span class="number">0</span>] &lt;= start) {
+            left = mid + <span class="number">1</span>;
+        } <span class="keyword">else</span> {
+            right = mid;
+        }
+    }
+
+    <span class="comment">// Merge with any overlapping ranges</span>
+    <span class="keyword">for</span> (<span class="keyword">let</span> i = insertPoint; i &lt; overlapsTarget.length; i++) {
+        <span class="keyword">const</span> [otherStart, otherEnd] = overlapsTarget[i];
+        <span class="keyword">if</span> (start &lt;= otherEnd && end >= otherStart) {
+            <span class="comment">// Ranges overlap - merge them</span>
+            start = Math.<span class="function">min</span>(otherStart, start);
+            end = Math.<span class="function">max</span>(otherEnd, end);
+            deleteCount++;
+        }
+    }
+
+    <span class="comment">// Insert the merged range</span>
+    overlapsTarget.<span class="function">splice</span>(insertPoint, deleteCount, [start, end]);
+}</code></pre>
+
+	<h2>Generating Final Line Segments</h2>
+
+	<p>
+		After processing all triangles, each edge has a list of hidden ranges. We generate
+		the final line segments:
+	</p>
+
+	<pre><code><span class="comment">// For an edge with hidden ranges: [[0.2, 0.5], [0.7, 0.9]]</span>
+
+<span class="comment">// Visible segments: [0, 0.2], [0.5, 0.7], [0.9, 1.0]</span>
+<span class="comment">// Hidden segments:  [0.2, 0.5], [0.7, 0.9]</span>
+
+<span class="keyword">function</span> <span class="function">generateLineSegments</span>(edge, hiddenRanges) {
+    <span class="keyword">const</span> visible = [];
+    <span class="keyword">const</span> hidden = [];
+
+    <span class="keyword">let</span> lastEnd = <span class="number">0</span>;
+    <span class="keyword">for</span> (<span class="keyword">const</span> [start, end] <span class="keyword">of</span> hiddenRanges) {
+        <span class="comment">// Visible segment before this hidden range</span>
+        <span class="keyword">if</span> (start > lastEnd) {
+            visible.<span class="function">push</span>(<span class="function">getSegment</span>(edge, lastEnd, start));
+        }
+        <span class="comment">// Hidden segment</span>
+        hidden.<span class="function">push</span>(<span class="function">getSegment</span>(edge, start, end));
+        lastEnd = end;
+    }
+    <span class="comment">// Final visible segment</span>
+    <span class="keyword">if</span> (lastEnd &lt; <span class="number">1</span>) {
+        visible.<span class="function">push</span>(<span class="function">getSegment</span>(edge, lastEnd, <span class="number">1</span>));
+    }
+
+    <span class="keyword">return</span> { visible, hidden };
+}</code></pre>
+
+	<h2>The Complete Flow</h2>
+
+	<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                       bvhcastEdges()                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  INPUT: LineObjectsBVH (edges), MeshBVH (triangles), mesh       │
+│                                                                  │
+│  edgesBvh.bvhcast(meshBvh):                                     │
+│    │                                                             │
+│    └─► for each (edgeRange, triangleRange) pair:                │
+│          │                                                       │
+│          └─► for each triangle in range:                        │
+│                │                                                 │
+│                ├─► Transform triangle to world space            │
+│                ├─► Back-face culling check                      │
+│                │                                                 │
+│                └─► for each edge in range:                      │
+│                      │                                           │
+│                      ├─► Y-bounds quick rejection               │
+│                      ├─► Skip if edge lies on triangle          │
+│                      ├─► Trim edge to beneath triangle plane    │
+│                      ├─► Calculate projected XZ overlap         │
+│                      ├─► Convert to parametric range [t0, t1]   │
+│                      └─► Insert into hiddenOverlapMap (merge)   │
+│                                                                  │
+│  OUTPUT: hiddenOverlapMap[edgeIndex] = [[t0,t1], [t2,t3], ...]  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+</div>
+
+	<div class="warning-box">
+		<h4>This is the Bottleneck!</h4>
+		<p>
+			This step accounts for ~95% of processing time in typical scenes. The complexity is
+			roughly O(edges × triangles), though BVH acceleration makes it much faster in practice.
+		</p>
+		<p>
+			For very complex scenes, consider:
+		</p>
+		<ul>
+			<li>Using the <span class="inline-code">VisibilityCuller</span> to pre-filter meshes</li>
+			<li>Reducing mesh complexity where possible</li>
+			<li>Adjusting BVH parameters for better balance</li>
+		</ul>
+	</div>
+
+	<div class="highlight-box">
+		<h4>File References</h4>
+		<p>
+			Main occlusion algorithm:<br>
+			<span class="inline-code">src/utils/bvhcastEdges.js</span>
+		</p>
+		<p>
+			Projected overlap calculation:<br>
+			<span class="inline-code">src/utils/getProjectedLineOverlap.js</span>
+		</p>
+		<p>
+			Range merging and insertion:<br>
+			<span class="inline-code">src/utils/getProjectedOverlaps.js</span>
+		</p>
+		<p>
+			Line BVH implementation:<br>
+			<span class="inline-code">src/LineObjectsBVH.js</span>
+		</p>
+	</div>
+
+	<div class="nav">
+		<a href="03-intersection-edges.html">← Previous: Intersection Edges</a>
+		<a href="05-putting-it-together.html">Next: Putting It Together →</a>
+	</div>
+
+</body>
+</html>

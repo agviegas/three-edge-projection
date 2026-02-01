@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>02: Edge Extraction - Finding the Important Edges</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+			line-height: 1.6;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 40px; }
+		h3 { color: #fff; margin-top: 30px; }
+		a { color: #4fc3f7; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; font-family: 'Consolas', monospace; }
+		.inline-code {
+			background: #0d0d1a;
+			padding: 2px 6px;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #333;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre;
+			line-height: 1.4;
+			overflow-x: auto;
+		}
+		.highlight-box {
+			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #4fc3f7;
+			margin: 20px 0;
+		}
+		.highlight-box h4 {
+			margin: 0 0 10px 0;
+			color: #4fc3f7;
+		}
+		.warning-box {
+			background: linear-gradient(135deg, #3a2a1a 0%, #1a0d0d 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #f7a44f;
+			margin: 20px 0;
+		}
+		.warning-box h4 {
+			margin: 0 0 10px 0;
+			color: #f7a44f;
+		}
+		.nav {
+			display: flex;
+			justify-content: space-between;
+			margin-top: 40px;
+			padding-top: 20px;
+			border-top: 1px solid #333;
+		}
+		.nav a {
+			padding: 10px 20px;
+			background: #0d0d1a;
+			border-radius: 6px;
+			text-decoration: none;
+		}
+		.nav a:hover { background: #1a2a3a; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 20px 0;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 10px;
+			text-align: left;
+		}
+		th { background: #0d0d1a; color: #4fc3f7; }
+		tr:nth-child(even) { background: rgba(0,0,0,0.2); }
+		.step {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			border: 1px solid #333;
+		}
+		.step-number {
+			background: #4fc3f7;
+			color: #000;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		.step h4 {
+			display: inline;
+			color: #fff;
+		}
+	</style>
+</head>
+<body>
+	<a href="index.html">← Back to Index</a>
+
+	<h1>02: Edge Extraction - Finding the Important Edges</h1>
+
+	<p>
+		This lesson covers the first step of the pipeline: extracting edges from a mesh.
+		We'll look at the actual algorithm used in <span class="inline-code">generateEdges.js</span>.
+	</p>
+
+	<h2>The Core Challenge</h2>
+
+	<p>
+		A mesh is just a list of triangles. Each triangle has 3 edges, but adjacent triangles share edges.
+		We need to:
+	</p>
+	<ol>
+		<li>Find which edges are shared between triangles</li>
+		<li>Check if those shared edges meet our criteria (hard edge or silhouette)</li>
+		<li>Handle boundary edges (edges with only one triangle)</li>
+	</ol>
+
+	<div class="diagram">
+Two adjacent triangles sharing an edge:
+
+    A ─────────── B          Triangle 1: A-B-C
+     \    T1    / \          Triangle 2: B-D-C
+      \       /   \
+       \    /  T2  \         Shared edge: B-C
+        \ /         \
+         C ───────── D
+
+When we process T1, we see edge B→C
+When we process T2, we see edge C→B (reversed!)
+We need to match these as the "same" edge.
+</div>
+
+	<h2>The Algorithm Step-by-Step</h2>
+
+	<div class="step">
+		<span class="step-number">1</span>
+		<h4>Vertex Hashing</h4>
+		<p style="margin-top: 15px;">
+			First, we convert each vertex position to a string "hash". This lets us compare vertices
+			even when they have tiny floating-point differences.
+		</p>
+		<pre><code><span class="comment">// Round to 4 decimal places (precision = 10000)</span>
+<span class="keyword">const</span> precision = Math.<span class="function">pow</span>(<span class="number">10</span>, <span class="number">4</span>);  <span class="comment">// = 10000</span>
+
+<span class="comment">// Create hash for vertex at position (1.00001, 2.00002, 3.00003)</span>
+<span class="keyword">const</span> hash = `${Math.<span class="function">round</span>(x * precision)},${Math.<span class="function">round</span>(y * precision)},${Math.<span class="function">round</span>(z * precision)}`;
+<span class="comment">// Result: "10000,20000,30000"</span></code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">2</span>
+		<h4>Edge Hashing</h4>
+		<p style="margin-top: 15px;">
+			We combine two vertex hashes to create an edge hash. The order matters - this lets us
+			detect when two triangles share an edge (they'll have reversed hashes).
+		</p>
+		<pre><code><span class="comment">// For triangle vertices A, B, C:</span>
+<span class="keyword">const</span> hashA = <span class="string">"10000,0,0"</span>;
+<span class="keyword">const</span> hashB = <span class="string">"0,10000,0"</span>;
+<span class="keyword">const</span> hashC = <span class="string">"0,0,10000"</span>;
+
+<span class="comment">// Edge A→B</span>
+<span class="keyword">const</span> edgeHash = `${hashA}_${hashB}`;      <span class="comment">// "10000,0,0_0,10000,0"</span>
+<span class="keyword">const</span> reverseHash = `${hashB}_${hashA}`;  <span class="comment">// "0,10000,0_10000,0,0"</span>
+
+<span class="comment">// If another triangle has edge B→A, its hash will match our reverseHash!</span></code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">3</span>
+		<h4>Building the Edge Map</h4>
+		<p style="margin-top: 15px;">
+			As we iterate through triangles, we build a map of edges we've seen. When we encounter
+			the reverse of an edge, we know we've found a shared edge.
+		</p>
+		<pre><code><span class="keyword">const</span> edgeData = {};
+
+<span class="comment">// For each edge in the current triangle:</span>
+<span class="keyword">if</span> (reverseHash <span class="keyword">in</span> edgeData) {
+    <span class="comment">// Found the matching edge! Compare normals...</span>
+    <span class="keyword">const</span> otherNormal = edgeData[reverseHash].normal;
+    <span class="comment">// ... check thresholds ...</span>
+    edgeData[reverseHash] = <span class="keyword">null</span>;  <span class="comment">// Mark as processed</span>
+} <span class="keyword">else if</span> (!(hash <span class="keyword">in</span> edgeData)) {
+    <span class="comment">// First time seeing this edge - store it</span>
+    edgeData[hash] = {
+        index0: vertexIndex0,
+        index1: vertexIndex1,
+        normal: triangleNormal.<span class="function">clone</span>()
+    };
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">4</span>
+		<h4>The Two Tests</h4>
+		<p style="margin-top: 15px;">
+			When we find a matching edge, we perform two tests to decide if it should be drawn:
+		</p>
+
+		<h5 style="color: #81c784; margin-top: 20px;">Test A: Hard Edge (Angle Threshold)</h5>
+		<pre><code><span class="comment">// thresholdAngle is in degrees (default: 50°)</span>
+<span class="keyword">const</span> thresholdDot = Math.<span class="function">cos</span>(thresholdAngle * Math.PI / <span class="number">180</span>);
+
+<span class="comment">// Compare the dot product of the two face normals</span>
+<span class="keyword">const</span> meetsThreshold = normal1.<span class="function">dot</span>(normal2) &lt;= thresholdDot;
+
+<span class="comment">// If normals point in very different directions → hard edge!</span>
+<span class="comment">// dot = 1: same direction (parallel faces)</span>
+<span class="comment">// dot = 0: perpendicular (90° angle)</span>
+<span class="comment">// dot = -1: opposite directions (180°)</span></code></pre>
+
+		<h5 style="color: #81c784; margin-top: 20px;">Test B: Silhouette Edge (Projection Direction)</h5>
+		<pre><code><span class="comment">// projectionDirection is typically (0, 1, 0) for top-down view</span>
+<span class="keyword">let</span> dot1 = projectionDirection.<span class="function">dot</span>(normal1);
+<span class="keyword">let</span> dot2 = projectionDirection.<span class="function">dot</span>(normal2);
+
+<span class="comment">// Handle nearly-vertical triangles (avoid floating point issues)</span>
+dot1 = Math.<span class="function">abs</span>(dot1) &lt; <span class="number">1e-10</span> ? <span class="number">0</span> : dot1;
+dot2 = Math.<span class="function">abs</span>(dot2) &lt; <span class="number">1e-10</span> ? <span class="number">0</span> : dot2;
+
+<span class="comment">// If signs differ, one face is visible, one is hidden → silhouette!</span>
+<span class="keyword">const</span> isSilhouette = Math.<span class="function">sign</span>(dot1) !== Math.<span class="function">sign</span>(dot2);</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">5</span>
+		<h4>Handle Boundary Edges</h4>
+		<p style="margin-top: 15px;">
+			After processing all triangles, some edges remain unmatched in our map. These are
+			<strong>boundary edges</strong> - edges that belong to only one triangle (holes in the mesh,
+			or non-manifold geometry). We always include these.
+		</p>
+		<pre><code><span class="comment">// After the main loop, check for unmatched edges</span>
+<span class="keyword">for</span> (<span class="keyword">const</span> key <span class="keyword">in</span> edgeData) {
+    <span class="keyword">if</span> (edgeData[key]) {  <span class="comment">// Still has data (wasn't matched)</span>
+        <span class="comment">// This is a boundary edge - add it to output</span>
+        <span class="keyword">const</span> { index0, index1 } = edgeData[key];
+        target.<span class="function">push</span>(<span class="keyword">new</span> Line3(v0, v1));
+    }
+}</code></pre>
+	</div>
+
+	<h2>Visual Example</h2>
+
+	<div class="diagram">
+Consider a simple "L" shape made of 2 quads (4 triangles):
+
+Top View:                       Side View (showing normals):
+┌───────┬───────┐                    N1↑    ↑N2
+│   T1  │  T2   │               ┌─────┼─────┼─────┐
+│       │       │               │     │     │     │
+├───────┼───────┤   Edge E      │     │ E   │     │
+│   T3  │  T4   │   ─────►      │     ↓     │     │
+│       │       │               └─────┼─────┴─────┘
+└───────┴───────┘                    N3↓
+
+Edge E is shared by T2 and T3.
+
+Test A (Angle): N2 · N3 = -1 (opposite directions)
+  → cos(50°) ≈ 0.64
+  → -1 &lt;= 0.64 ✓ HARD EDGE!
+
+Test B (Silhouette): Assuming top-down projection (0, 1, 0)
+  → N2 · (0,1,0) &gt; 0 (facing up)
+  → N3 · (0,1,0) &lt; 0 (facing down)
+  → Signs differ ✓ SILHOUETTE EDGE!
+
+Result: Edge E is included in the output.
+</div>
+
+	<h2>The Complete Flow</h2>
+
+	<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                     generateEdges()                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  INPUT: BufferGeometry with position attribute                  │
+│                                                                  │
+│  for each triangle (i = 0; i &lt; indexCount; i += 3):            │
+│    │                                                             │
+│    ├─► Get vertices A, B, C                                     │
+│    ├─► Calculate triangle normal                                │
+│    ├─► Create vertex hashes (4 decimal precision)               │
+│    ├─► Skip if degenerate (duplicate vertices)                  │
+│    │                                                             │
+│    └─► for each edge (A→B, B→C, C→A):                          │
+│          │                                                       │
+│          ├─► Create hash and reverseHash                        │
+│          │                                                       │
+│          ├─► if reverseHash exists in edgeData:                 │
+│          │     ├─► Get other triangle's normal                  │
+│          │     ├─► Test A: dot(N1, N2) &lt;= cos(threshold)?      │
+│          │     ├─► Test B: sign(proj·N1) ≠ sign(proj·N2)?      │
+│          │     ├─► if either test passes: ADD EDGE             │
+│          │     └─► Mark reverseHash as processed                │
+│          │                                                       │
+│          └─► else if hash not in edgeData:                      │
+│                └─► Store edge with normal                       │
+│                                                                  │
+│  for each remaining unmatched edge in edgeData:                 │
+│    └─► ADD EDGE (boundary edge)                                 │
+│                                                                  │
+│  OUTPUT: Array of Line3 objects                                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+</div>
+
+	<h2>Key Points to Remember</h2>
+
+	<table>
+		<tr>
+			<th>Concept</th>
+			<th>Purpose</th>
+		</tr>
+		<tr>
+			<td>Vertex Hashing (4 decimals)</td>
+			<td>Handle floating-point imprecision when comparing positions</td>
+		</tr>
+		<tr>
+			<td>Edge Hash Direction</td>
+			<td>Detect shared edges by looking for reversed hash</td>
+		</tr>
+		<tr>
+			<td>Angle Threshold Test</td>
+			<td>Find hard edges where faces meet at sharp angles</td>
+		</tr>
+		<tr>
+			<td>Projection Direction Test</td>
+			<td>Find silhouette edges where surface turns away</td>
+		</tr>
+		<tr>
+			<td>Boundary Edge Handling</td>
+			<td>Include edges with only one adjacent triangle</td>
+		</tr>
+	</table>
+
+	<div class="warning-box">
+		<h4>Performance Note</h4>
+		<p>
+			The algorithm is O(n) where n is the number of triangles. Each triangle is visited once,
+			and hash lookups are O(1). This is very efficient - even meshes with millions of triangles
+			process quickly at this stage.
+		</p>
+		<p>
+			The <span class="inline-code">iterationTime</span> parameter allows the generator to yield
+			periodically, keeping the UI responsive during processing.
+		</p>
+	</div>
+
+	<div class="highlight-box">
+		<h4>File Reference</h4>
+		<p>
+			The code for this algorithm is in:<br>
+			<span class="inline-code">src/utils/generateEdges.js</span>
+		</p>
+		<p>
+			The EdgeGenerator class that calls it is in:<br>
+			<span class="inline-code">src/EdgeGenerator.js</span>
+		</p>
+	</div>
+
+	<div class="nav">
+		<a href="01-foundations.html">← Previous: Foundations</a>
+		<a href="03-intersection-edges.html">Next: Intersection Edges →</a>
+	</div>
+
+</body>
+</html>

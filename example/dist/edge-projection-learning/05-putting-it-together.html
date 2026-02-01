@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>05: Putting It All Together</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+			line-height: 1.6;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 40px; }
+		h3 { color: #fff; margin-top: 30px; }
+		a { color: #4fc3f7; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; font-family: 'Consolas', monospace; }
+		.inline-code {
+			background: #0d0d1a;
+			padding: 2px 6px;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #333;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre;
+			line-height: 1.4;
+			overflow-x: auto;
+		}
+		.highlight-box {
+			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #4fc3f7;
+			margin: 20px 0;
+		}
+		.highlight-box h4 {
+			margin: 0 0 10px 0;
+			color: #4fc3f7;
+		}
+		.warning-box {
+			background: linear-gradient(135deg, #3a2a1a 0%, #1a0d0d 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #f7a44f;
+			margin: 20px 0;
+		}
+		.warning-box h4 {
+			margin: 0 0 10px 0;
+			color: #f7a44f;
+		}
+		.success-box {
+			background: linear-gradient(135deg, #1a3a2a 0%, #0d1a0d 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #81c784;
+			margin: 20px 0;
+		}
+		.success-box h4 {
+			margin: 0 0 10px 0;
+			color: #81c784;
+		}
+		.nav {
+			display: flex;
+			justify-content: space-between;
+			margin-top: 40px;
+			padding-top: 20px;
+			border-top: 1px solid #333;
+		}
+		.nav a {
+			padding: 10px 20px;
+			background: #0d0d1a;
+			border-radius: 6px;
+			text-decoration: none;
+		}
+		.nav a:hover { background: #1a2a3a; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 20px 0;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 10px;
+			text-align: left;
+		}
+		th { background: #0d0d1a; color: #4fc3f7; }
+		tr:nth-child(even) { background: rgba(0,0,0,0.2); }
+	</style>
+</head>
+<body>
+	<a href="index.html">← Back to Index</a>
+
+	<h1>05: Putting It All Together</h1>
+
+	<p>
+		Now let's see how the <span class="inline-code">ProjectionGenerator</span> orchestrates
+		all the pieces we've learned about into a cohesive pipeline.
+	</p>
+
+	<h2>The Main Classes</h2>
+
+	<table>
+		<tr>
+			<th>Class</th>
+			<th>Responsibility</th>
+			<th>File</th>
+		</tr>
+		<tr>
+			<td><code>ProjectionGenerator</code></td>
+			<td>Main orchestrator - coordinates entire pipeline</td>
+			<td>src/ProjectionGenerator.js</td>
+		</tr>
+		<tr>
+			<td><code>EdgeGenerator</code></td>
+			<td>Extracts hard/silhouette edges and intersection edges</td>
+			<td>src/EdgeGenerator.js</td>
+		</tr>
+		<tr>
+			<td><code>ProjectedEdgeCollector</code></td>
+			<td>Clips edges against meshes, generates output geometry</td>
+			<td>src/ProjectionGenerator.js</td>
+		</tr>
+		<tr>
+			<td><code>LineObjectsBVH</code></td>
+			<td>BVH structure optimized for line segments</td>
+			<td>src/utils/LineObjectsBVH.js</td>
+		</tr>
+		<tr>
+			<td><code>VisibilityCuller</code></td>
+			<td>GPU-based pre-filtering of visible meshes</td>
+			<td>src/VisibilityCuller.js</td>
+		</tr>
+	</table>
+
+	<h2>Basic Usage</h2>
+
+	<pre><code><span class="keyword">import</span> { ProjectionGenerator } <span class="keyword">from</span> <span class="string">'three-edge-projection'</span>;
+
+<span class="comment">// Create generator with settings</span>
+<span class="keyword">const</span> generator = <span class="keyword">new</span> ProjectionGenerator();
+generator.angleThreshold = <span class="number">50</span>;              <span class="comment">// degrees for hard edges</span>
+generator.includeIntersectionEdges = <span class="keyword">true</span>; <span class="comment">// detect overlapping geometry</span>
+generator.iterationTime = <span class="number">30</span>;              <span class="comment">// ms per iteration (for UI responsiveness)</span>
+
+<span class="comment">// Generate edges (async version)</span>
+<span class="keyword">const</span> result = <span class="keyword">await</span> generator.<span class="function">generateAsync</span>(scene);
+
+<span class="comment">// Get output geometries</span>
+<span class="keyword">const</span> visibleLines = result.<span class="function">getVisibleLineGeometry</span>();
+<span class="keyword">const</span> hiddenLines = result.<span class="function">getHiddenLineGeometry</span>();
+
+<span class="comment">// Create line segments for rendering</span>
+<span class="keyword">const</span> visibleMesh = <span class="keyword">new</span> THREE.LineSegments(visibleLines, solidMaterial);
+<span class="keyword">const</span> hiddenMesh = <span class="keyword">new</span> THREE.LineSegments(hiddenLines, dashedMaterial);</code></pre>
+
+	<h2>The Generator Pattern</h2>
+
+	<p>
+		All core functions use JavaScript generators (<span class="inline-code">function*</span>).
+		This allows the processing to <strong>yield</strong> periodically, keeping the UI responsive
+		during long operations.
+	</p>
+
+	<pre><code><span class="comment">// The generate() function is a generator</span>
+*<span class="function">generate</span>(scene, options) {
+    <span class="comment">// Step 1: Extract edges</span>
+    <span class="keyword">yield</span>* edgeGenerator.<span class="function">getEdgesGenerator</span>(scene, edges);
+
+    <span class="comment">// Step 2: Extract intersection edges (optional)</span>
+    <span class="keyword">if</span> (includeIntersectionEdges) {
+        <span class="keyword">yield</span>* edgeGenerator.<span class="function">getIntersectionEdgesGenerator</span>(scene, edges);
+    }
+
+    <span class="comment">// Step 3: Filter degenerate edges</span>
+    edges = edges.<span class="function">filter</span>(e => !<span class="function">isYProjectedLineDegenerate</span>(e));
+    <span class="keyword">yield</span>;
+
+    <span class="comment">// Step 4: Clip edges against all meshes</span>
+    <span class="keyword">yield</span>* collector.<span class="function">addEdgesGenerator</span>(edges);
+
+    <span class="keyword">return</span> collector;
+}
+
+<span class="comment">// The generateAsync() wrapper runs the generator with requestAnimationFrame</span>
+<span class="function">generateAsync</span>(scene, options) {
+    <span class="keyword">return new</span> Promise((resolve) => {
+        <span class="keyword">const</span> task = <span class="keyword">this</span>.<span class="function">generate</span>(scene, options);
+
+        <span class="keyword">function</span> <span class="function">run</span>() {
+            <span class="keyword">const</span> result = task.<span class="function">next</span>();
+            <span class="keyword">if</span> (result.done) {
+                <span class="function">resolve</span>(result.value);
+            } <span class="keyword">else</span> {
+                <span class="function">requestAnimationFrame</span>(run);
+            }
+        }
+
+        <span class="function">run</span>();
+    });
+}</code></pre>
+
+	<div class="highlight-box">
+		<h4>Why Generators?</h4>
+		<p>
+			Without generators, processing a complex model would freeze the browser for seconds
+			or even minutes. With generators:
+		</p>
+		<ul>
+			<li>Each step can <span class="inline-code">yield</span> after ~30ms of work</li>
+			<li>The browser can process events and update the UI between yields</li>
+			<li>You can show progress indicators to the user</li>
+			<li>Processing can be cancelled via AbortSignal</li>
+		</ul>
+	</div>
+
+	<h2>The Complete Pipeline</h2>
+
+	<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│                    ProjectionGenerator.generate()                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ OPTIONAL: VisibilityCuller                               │    │
+│  │ GPU-render scene, identify visible meshes only           │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 1: EdgeGenerator.getEdgesGenerator()                │    │
+│  │ → Extract hard edges (angle threshold)                   │    │
+│  │ → Extract silhouette edges (projection direction)        │    │
+│  │ → Handle boundary edges                                  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 2: EdgeGenerator.getIntersectionEdgesGenerator()    │    │
+│  │ → BVH-cast all meshes against each other                 │    │
+│  │ → Find triangle-triangle intersections                   │    │
+│  │ → Add intersection edges                                 │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 3: Filter Degenerate Edges                          │    │
+│  │ → Remove edges that project to points/degenerate lines   │    │
+│  │ → (Edges parallel to projection direction)               │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 4: ProjectedEdgeCollector.addEdgesGenerator()       │    │
+│  │                                                          │    │
+│  │  ┌────────────────────────────────────────────────────┐ │    │
+│  │  │ 4a. Build LineObjectsBVH from edges                 │ │    │
+│  │  └────────────────────────────────────────────────────┘ │    │
+│  │                         ↓                                │    │
+│  │  ┌────────────────────────────────────────────────────┐ │    │
+│  │  │ 4b. For each mesh:                                  │ │    │
+│  │  │   - Build MeshBVH (cached)                         │ │    │
+│  │  │   - bvhcastEdges() to find occlusions              │ │    │
+│  │  │   - Store hidden ranges in hiddenOverlapMap        │ │    │
+│  │  └────────────────────────────────────────────────────┘ │    │
+│  │                         ↓                                │    │
+│  │  ┌────────────────────────────────────────────────────┐ │    │
+│  │  │ 4c. For each edge:                                  │ │    │
+│  │  │   - overlapsToLines() → visible segments           │ │    │
+│  │  │   - overlapsToLines() → hidden segments            │ │    │
+│  │  └────────────────────────────────────────────────────┘ │    │
+│  │                                                          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ OUTPUT: collector with                                   │    │
+│  │   - getVisibleLineGeometry() → BufferGeometry           │    │
+│  │   - getHiddenLineGeometry() → BufferGeometry            │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+</div>
+
+	<h2>Progress Tracking</h2>
+
+	<p>
+		You can monitor progress using the <span class="inline-code">onProgress</span> callback:
+	</p>
+
+	<pre><code><span class="keyword">const</span> result = <span class="keyword">await</span> generator.<span class="function">generateAsync</span>(scene, {
+    <span class="function">onProgress</span>: (stage, progress, collector) => {
+        console.<span class="function">log</span>(`${stage}: ${(progress * <span class="number">100</span>).<span class="function">toFixed</span>(<span class="number">1</span>)}%`);
+
+        <span class="comment">// During clipping, you can preview partial results:</span>
+        <span class="keyword">if</span> (collector && stage === <span class="string">'Clipping edges'</span>) {
+            previewMesh.geometry = collector.<span class="function">getVisibleLineGeometry</span>();
+        }
+    }
+});</code></pre>
+
+	<h2>Cancellation</h2>
+
+	<p>
+		Use an AbortSignal to cancel long-running operations:
+	</p>
+
+	<pre><code><span class="keyword">const</span> controller = <span class="keyword">new</span> AbortController();
+
+<span class="comment">// Start generation</span>
+<span class="keyword">const</span> promise = generator.<span class="function">generateAsync</span>(scene, {
+    signal: controller.signal
+});
+
+<span class="comment">// Cancel if user clicks a button</span>
+cancelButton.<span class="function">addEventListener</span>(<span class="string">'click'</span>, () => {
+    controller.<span class="function">abort</span>();
+});
+
+<span class="keyword">try</span> {
+    <span class="keyword">const</span> result = <span class="keyword">await</span> promise;
+} <span class="keyword">catch</span> (error) {
+    <span class="keyword">if</span> (error.message.<span class="function">includes</span>(<span class="string">'aborted'</span>)) {
+        console.<span class="function">log</span>(<span class="string">'Generation cancelled'</span>);
+    }
+}</code></pre>
+
+	<h2>Performance Tips</h2>
+
+	<div class="warning-box">
+		<h4>Typical Time Distribution</h4>
+		<div class="diagram" style="margin: 10px 0; padding: 10px;">
+Visibility culling:    ~4%
+Extracting edges:      ~1%
+Filtering edges:       ~0.1%
+Clipping edges:        ~95%  ← THE BOTTLENECK
+		</div>
+		<p>
+			The clipping step dominates because it must check every edge against every
+			potentially-occluding triangle.
+		</p>
+	</div>
+
+	<h3>Optimization Strategies</h3>
+
+	<table>
+		<tr>
+			<th>Strategy</th>
+			<th>How</th>
+			<th>Impact</th>
+		</tr>
+		<tr>
+			<td>Use VisibilityCuller</td>
+			<td>Pre-filter to only visible meshes</td>
+			<td>Can skip 50-90% of geometry</td>
+		</tr>
+		<tr>
+			<td>Reduce mesh complexity</td>
+			<td>Simplify models before processing</td>
+			<td>Linear reduction in time</td>
+		</tr>
+		<tr>
+			<td>Disable intersection edges</td>
+			<td><code>includeIntersectionEdges = false</code></td>
+			<td>Skip ~1-5% of total time</td>
+		</tr>
+		<tr>
+			<td>Increase angle threshold</td>
+			<td>Higher threshold = fewer edges</td>
+			<td>Fewer edges to clip</td>
+		</tr>
+		<tr>
+			<td>Pre-compute BVH</td>
+			<td>Set <code>geometry.boundsTree</code></td>
+			<td>Skip BVH build time</td>
+		</tr>
+	</table>
+
+	<h2>Using VisibilityCuller</h2>
+
+	<pre><code><span class="keyword">import</span> { ProjectionGenerator, VisibilityCuller } <span class="keyword">from</span> <span class="string">'three-edge-projection'</span>;
+
+<span class="comment">// Create culler (needs a WebGLRenderer)</span>
+<span class="keyword">const</span> culler = <span class="keyword">new</span> VisibilityCuller();
+culler.resolution = <span class="number">512</span>;  <span class="comment">// Higher = more accurate, slower</span>
+
+<span class="comment">// Pass to generator</span>
+<span class="keyword">const</span> result = <span class="keyword">await</span> generator.<span class="function">generateAsync</span>(scene, {
+    visibilityCuller: culler
+});</code></pre>
+
+	<div class="success-box">
+		<h4>Congratulations!</h4>
+		<p>
+			You now understand the complete edge projection pipeline! From extracting edges based
+			on face angles and silhouettes, through finding intersection edges, to the complex
+			occlusion clipping algorithm that determines visibility.
+		</p>
+		<p>
+			Key takeaways:
+		</p>
+		<ul>
+			<li>BVH acceleration is crucial for performance</li>
+			<li>The generator pattern keeps UI responsive</li>
+			<li>Clipping is the bottleneck - optimize there first</li>
+			<li>The output is two BufferGeometries: visible and hidden lines</li>
+		</ul>
+	</div>
+
+	<h2>File Reference Summary</h2>
+
+	<table>
+		<tr>
+			<th>File</th>
+			<th>Key Functions</th>
+		</tr>
+		<tr>
+			<td><code>src/ProjectionGenerator.js</code></td>
+			<td>Main orchestrator, ProjectedEdgeCollector</td>
+		</tr>
+		<tr>
+			<td><code>src/EdgeGenerator.js</code></td>
+			<td>getEdgesGenerator(), getIntersectionEdgesGenerator()</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/generateEdges.js</code></td>
+			<td>Vertex hashing, edge matching, angle/silhouette tests</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/generateIntersectionEdges.js</code></td>
+			<td>Triangle-triangle intersection detection</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/bvhcastEdges.js</code></td>
+			<td>Core occlusion algorithm</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/getProjectedLineOverlap.js</code></td>
+			<td>2D overlap calculation</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/getProjectedOverlaps.js</code></td>
+			<td>Range merging with binary search</td>
+		</tr>
+		<tr>
+			<td><code>src/utils/LineObjectsBVH.js</code></td>
+			<td>BVH for line segments</td>
+		</tr>
+		<tr>
+			<td><code>src/VisibilityCuller.js</code></td>
+			<td>GPU-based visibility pre-filtering</td>
+		</tr>
+	</table>
+
+	<div class="nav">
+		<a href="04-occlusion-clipping.html">← Previous: Occlusion & Clipping</a>
+		<a href="index.html">Back to Index →</a>
+	</div>
+
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 06: Geometry Test (Point in Triangle)</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		#canvas-container {
+			display: flex;
+			gap: 20px;
+			margin: 20px 0;
+		}
+		canvas {
+			background: #0d0d1a;
+			border-radius: 8px;
+			border: 1px solid #333;
+		}
+	</style>
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+  <script type="module" crossorigin src="../assets/06-geometry-test-CzaKDV-x.js"></script>
+  <link rel="modulepreload" crossorigin href="../assets/modulepreload-polyfill-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../assets/three.core-CntQ0PPt.js">
+  <link rel="modulepreload" crossorigin href="../assets/three.tsl-CucFAqAO.js">
+</head>
+<body>
+	<h1>TSL Learning 06: Geometry Test (Point in Triangle)</h1>
+
+	<p>
+		Now let's do some actual geometry! We'll test if 2D points are inside a triangle.
+		This is a building block for the edge clipping algorithm.
+	</p>
+
+	<h2>The Algorithm: Barycentric Coordinates</h2>
+	<p>
+		A point P is inside triangle ABC if it can be expressed as:<br>
+		<code>P = u*A + v*B + w*C</code> where <code>u + v + w = 1</code> and all are ≥ 0.
+	</p>
+	<p>
+		We use the cross product method: check which side of each edge the point is on.
+		If it's on the same side for all three edges, it's inside.
+	</p>
+
+	<h2>Visualization</h2>
+	<div id="canvas-container">
+		<canvas id="canvas" width="400" height="400"></canvas>
+		<div>
+			<p>🔺 Triangle vertices (green)</p>
+			<p>🟢 Points inside (green)</p>
+			<p>🔴 Points outside (red)</p>
+			<p><em>Results computed on GPU!</em></p>
+		</div>
+	</div>
+
+	<button onclick="runExample()">Run GPU Test</button>
+
+	<div id="output">Click "Run GPU Test" to compute which points are inside the triangle...</div>
+
+	<h2>The TSL Code</h2>
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex, select } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Triangle vertices (vec4 for alignment, using xy)</span>
+<span class="keyword">const</span> triangleData = <span class="keyword">new</span> Float32Array([
+    <span class="number">0.5</span>, <span class="number">0.1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// A</span>
+    <span class="number">0.15</span>, <span class="number">0.85</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="comment">// B</span>
+    <span class="number">0.85</span>, <span class="number">0.85</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="comment">// C</span>
+]);
+<span class="keyword">const</span> triangleBuffer = <span class="function">instancedArray</span>(triangleData, <span class="string">'vec4'</span>);
+
+<span class="comment">// Test points (vec4 for alignment, using xy)</span>
+<span class="keyword">const</span> pointsData = <span class="keyword">new</span> Float32Array([...]);  <span class="comment">// your points</span>
+<span class="keyword">const</span> pointsBuffer = <span class="function">instancedArray</span>(pointsData, <span class="string">'vec4'</span>);
+
+<span class="comment">// Results: 1 if inside, 0 if outside</span>
+<span class="keyword">const</span> resultsBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array(numPoints), <span class="string">'uint'</span>);
+
+<span class="comment">// Point-in-triangle test kernel</span>
+<span class="keyword">const</span> pointInTriangle = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex).xy;
+    <span class="keyword">const</span> a = triangleBuffer.<span class="function">element</span>(<span class="number">0</span>).xy;
+    <span class="keyword">const</span> b = triangleBuffer.<span class="function">element</span>(<span class="number">1</span>).xy;
+    <span class="keyword">const</span> c = triangleBuffer.<span class="function">element</span>(<span class="number">2</span>).xy;
+
+    <span class="comment">// Sign function: which side of edge (a,b) is point p on?</span>
+    <span class="keyword">const</span> sign = (px, py, ax, ay, bx, by) => {
+        <span class="keyword">return</span> (px.<span class="function">sub</span>(bx)).<span class="function">mul</span>(ay.<span class="function">sub</span>(by)).<span class="function">sub</span>((ax.<span class="function">sub</span>(bx)).<span class="function">mul</span>(py.<span class="function">sub</span>(by)));
+    };
+
+    <span class="keyword">const</span> d1 = sign(point.x, point.y, a.x, a.y, b.x, b.y);
+    <span class="keyword">const</span> d2 = sign(point.x, point.y, b.x, b.y, c.x, c.y);
+    <span class="keyword">const</span> d3 = sign(point.x, point.y, c.x, c.y, a.x, a.y);
+
+    <span class="comment">// Inside if all signs are same (all ≥0 or all ≤0)</span>
+    <span class="keyword">const</span> hasNeg = d1.<span class="function">lessThan</span>(<span class="number">0</span>).<span class="function">or</span>(d2.<span class="function">lessThan</span>(<span class="number">0</span>)).<span class="function">or</span>(d3.<span class="function">lessThan</span>(<span class="number">0</span>));
+    <span class="keyword">const</span> hasPos = d1.<span class="function">greaterThan</span>(<span class="number">0</span>).<span class="function">or</span>(d2.<span class="function">greaterThan</span>(<span class="number">0</span>)).<span class="function">or</span>(d3.<span class="function">greaterThan</span>(<span class="number">0</span>));
+    <span class="keyword">const</span> inside = hasNeg.<span class="function">and</span>(hasPos).<span class="function">not</span>();
+
+    resultsBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(<span class="function">select</span>(inside, <span class="number">1</span>, <span class="number">0</span>));
+})().<span class="function">compute</span>(numPoints);
+
+<span class="comment">// Execute</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(pointInTriangle);
+
+<span class="comment">// Read results</span>
+<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(resultsBuffer.value);
+<span class="keyword">const</span> results = <span class="keyword">new</span> Uint32Array(gpuBuffer);</code></pre>
+
+
+
+</body>
+</html>

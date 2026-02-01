@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 04: Atomic Operations</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		.warning { color: #ffb74d; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			font-family: monospace;
+			line-height: 1.4;
+			white-space: pre-wrap;
+		}
+	</style>
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+  <script type="module" crossorigin src="../assets/04-atomics-Bt01jBMp.js"></script>
+  <link rel="modulepreload" crossorigin href="../assets/modulepreload-polyfill-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../assets/three.core-CntQ0PPt.js">
+  <link rel="modulepreload" crossorigin href="../assets/three.tsl-CucFAqAO.js">
+</head>
+<body>
+	<h1>TSL Learning 04: Atomic Operations</h1>
+
+	<p>
+		When multiple GPU threads need to modify the same memory location, we have a problem:
+		<strong>race conditions</strong>. Atomic operations solve this.
+	</p>
+
+	<h2>The Problem</h2>
+	<div class="diagram">
+Thread 0: read counter (0) → add 1 → write (1)
+Thread 1: read counter (0) → add 1 → write (1)  ← Problem! Both read 0!
+Thread 2: read counter (0) → add 1 → write (1)
+
+Expected result: 3
+Actual result: 1 (or some other wrong number)
+	</div>
+
+	<h2>The Solution: atomicAdd</h2>
+	<p>
+		<code>atomicAdd</code> performs read-modify-write as a single uninterruptible operation.
+		No other thread can access the memory until it's done.
+	</p>
+	<div class="diagram">
+Thread 0: atomicAdd(counter, 1) → returns 0, counter is now 1
+Thread 1: atomicAdd(counter, 1) → returns 1, counter is now 2
+Thread 2: atomicAdd(counter, 1) → returns 2, counter is now 3
+
+Result: 3 ✓
+	</div>
+
+	<h2>Important: Atomics Work on Integers Only</h2>
+	<p>
+		WebGPU only supports atomic operations on <strong>integers</strong> (int, uint).
+		If you need floats, you must use a workaround (multiply by a large number, use atomics, divide later).
+	</p>
+
+	<h2>Example: Sum All Numbers</h2>
+	<p>Given an array of integers, sum them all using atomicAdd. Each thread adds one value to the total.</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>Key Concepts</h2>
+	<ul>
+		<li><code>.toAtomic()</code> - Marks a buffer for atomic operations</li>
+		<li><code>atomicStore(ptr, value)</code> - Write a value atomically</li>
+		<li><code>atomicAdd(ptr, value)</code> - Add to a value atomically (returns the old value)</li>
+		<li><code>atomicLoad(ptr)</code> - Read a value atomically (for use within shaders)</li>
+	</ul>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex, atomicAdd } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Input data to sum</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Uint32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>, <span class="number">7</span>, <span class="number">8</span>, <span class="number">9</span>, <span class="number">10</span>]);
+<span class="keyword">const</span> inputBuffer = <span class="function">instancedArray</span>(inputData, <span class="string">'uint'</span>);
+
+<span class="comment">// Create an atomic counter buffer (initialized to 0)</span>
+<span class="keyword">const</span> counterBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array([<span class="number">0</span>]), <span class="string">'uint'</span>).<span class="function">toAtomic</span>();
+
+<span class="comment">// Sum all values atomically</span>
+<span class="keyword">const</span> sumKernel = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
+    <span class="function">atomicAdd</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>), value);
+})().<span class="function">compute</span>(inputData.length);
+
+<span class="comment">// Execute kernel</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(sumKernel);
+
+<span class="comment">// Read result back to JavaScript</span>
+<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(counterBuffer.value);
+<span class="keyword">const</span> sum = <span class="keyword">new</span> Uint32Array(gpuBuffer)[<span class="number">0</span>];
+console.<span class="function">log</span>(<span class="string">'Sum:'</span>, sum); <span class="comment">// 55</span></code></pre>
+
+	<h2>Why This Matters for Edge Clipping</h2>
+	<p>
+		In the edge clipping problem, many triangles might overlap the same edge.
+		We need to <strong>atomically</strong> add each overlap to an output buffer.
+		This is exactly what <code>atomicAdd</code> enables!
+	</p>
+
+
+
+</body>
+</html>

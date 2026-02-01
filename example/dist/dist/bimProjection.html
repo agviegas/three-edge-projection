@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Plus Jakarta Sans", sans-serif;
+      overflow: hidden;
+    }
+
+    .full-screen {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #output {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      padding: 10px;
+      font-size: 12px;
+      color: #c9c9c9;
+      z-index: 1000;
+    }
+  </style>
+  <link rel="modulepreload" crossorigin href="../assets/PlanarIntersectionGenerator-8oHhWbT_-DV97hJXm.js">
+  <link rel="modulepreload" crossorigin href="../assets/VisibilityCuller-1jF7k2nk-BaTiRxHx.js">
+  <link rel="modulepreload" crossorigin href="../assets/ProjectionGenerator-AK6H9hUz-Ct-Byys3.js">
+  <script type="module" crossorigin src="../assets/bimProjection-B-rKPKmQ.js"></script>
+  <link rel="modulepreload" crossorigin href="../assets/modulepreload-polyfill-DaKOjhqt.js">
+  <link rel="modulepreload" crossorigin href="../assets/PlanarIntersectionGenerator-8oHhWbT_-Xl0VRrR8.js">
+  <link rel="modulepreload" crossorigin href="../assets/VisibilityCuller-1jF7k2nk-Bzy_tDws.js">
+  <link rel="modulepreload" crossorigin href="../assets/ProjectionGenerator-AK6H9hUz-C56xumGm.js">
+</head>
+
+<body>
+	<div id="output"></div>
+  <div id="container" class="full-screen"></div>
+</body>
+
+</html>

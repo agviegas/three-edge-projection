@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 03: Conditionals (If/Else)</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 15px 0;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 10px;
+			text-align: left;
+		}
+		th { background: #0d0d1a; color: #4fc3f7; }
+	</style>
+</head>
+<body>
+	<h1>TSL Learning 03: Conditionals (If/Else)</h1>
+
+	<p>
+		GPU shaders need conditionals too! TSL provides <code>If</code>, <code>ElseIf</code>, and <code>Else</code>
+		that look different from JavaScript but work similarly.
+	</p>
+
+	<h2>Syntax Comparison</h2>
+	<table>
+		<tr>
+			<th>JavaScript</th>
+			<th>TSL</th>
+		</tr>
+		<tr>
+			<td><pre><code>if (x > 5) {
+    result = 1;
+}</code></pre></td>
+			<td><pre><code>If(x.greaterThan(5), () => {
+    result.assign(1);
+});</code></pre></td>
+		</tr>
+		<tr>
+			<td><pre><code>if (x > 5) {
+    result = 1;
+} else {
+    result = 0;
+}</code></pre></td>
+			<td><pre><code>If(x.greaterThan(5), () => {
+    result.assign(1);
+}).Else(() => {
+    result.assign(0);
+});</code></pre></td>
+		</tr>
+		<tr>
+			<td><pre><code>if (x > 5) {
+    result = 2;
+} else if (x > 0) {
+    result = 1;
+} else {
+    result = 0;
+}</code></pre></td>
+			<td><pre><code>If(x.greaterThan(5), () => {
+    result.assign(2);
+}).ElseIf(x.greaterThan(0), () => {
+    result.assign(1);
+}).Else(() => {
+    result.assign(0);
+});</code></pre></td>
+		</tr>
+	</table>
+
+	<h2>Comparison Operators</h2>
+	<table>
+		<tr>
+			<th>JavaScript</th>
+			<th>TSL</th>
+		</tr>
+		<tr><td><code>a > b</code></td><td><code>a.greaterThan(b)</code></td></tr>
+		<tr><td><code>a >= b</code></td><td><code>a.greaterThanEqual(b)</code></td></tr>
+		<tr><td><code>a < b</code></td><td><code>a.lessThan(b)</code></td></tr>
+		<tr><td><code>a <= b</code></td><td><code>a.lessThanEqual(b)</code></td></tr>
+		<tr><td><code>a === b</code></td><td><code>a.equal(b)</code></td></tr>
+		<tr><td><code>a !== b</code></td><td><code>a.notEqual(b)</code></td></tr>
+		<tr><td><code>a && b</code></td><td><code>a.and(b)</code></td></tr>
+		<tr><td><code>a || b</code></td><td><code>a.or(b)</code></td></tr>
+		<tr><td><code>!a</code></td><td><code>a.not()</code></td></tr>
+	</table>
+
+	<h2>Example: Classify Numbers</h2>
+	<p>Let's classify numbers as negative (-1), zero (0), or positive (1).</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">const</span> classify = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
+    <span class="keyword">const</span> result = <span class="function">float</span>(<span class="number">0</span>).<span class="function">toVar</span>();  <span class="comment">// Create mutable variable</span>
+
+    <span class="function">If</span>(value.<span class="function">lessThan</span>(<span class="number">0</span>), () => {
+        result.<span class="function">assign</span>(<span class="number">-1</span>);
+    }).<span class="function">ElseIf</span>(value.<span class="function">greaterThan</span>(<span class="number">0</span>), () => {
+        result.<span class="function">assign</span>(<span class="number">1</span>);
+    });
+    <span class="comment">// If value === 0, result stays 0</span>
+
+    outputBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(result);
+})().<span class="function">compute</span>(N);</code></pre>
+
+	<h2>Important: toVar()</h2>
+	<p>
+		In TSL, values are <strong>immutable by default</strong>. To create a variable you can modify,
+		use <code>.toVar()</code>:
+	</p>
+	<pre><code><span class="comment">// This creates an immutable value (can't assign to it later)</span>
+<span class="keyword">const</span> x = <span class="function">float</span>(<span class="number">5</span>);
+
+<span class="comment">// This creates a mutable variable (can use .assign())</span>
+<span class="keyword">const</span> y = <span class="function">float</span>(<span class="number">5</span>).<span class="function">toVar</span>();
+y.<span class="function">assign</span>(<span class="number">10</span>);  <span class="comment">// OK!</span></code></pre>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import { Fn, If, instancedArray, instanceIndex, float } from 'three/tsl';
+
+		window.runExample = async function() {
+			const output = document.getElementById('output');
+			output.innerHTML = 'Initializing...';
+
+			try {
+				const renderer = new THREE.WebGPURenderer();
+				await renderer.init();
+				output.innerHTML = '<span class="success">✓ WebGPU ready</span>\n';
+
+				// Input: various numbers
+				const inputData = new Float32Array([-5, -0.5, 0, 0.5, 5, -100, 100]);
+				const outputData = new Float32Array(inputData.length);
+
+				output.innerHTML += `\nInput values: [${Array.from(inputData).join(', ')}]\n`;
+
+				// Create buffers
+				const inputBuffer = instancedArray(inputData, 'float');
+				const outputBuffer = instancedArray(outputData, 'float').setPBO(true);
+
+				// Compute shader: classify as -1, 0, or 1
+				const classify = Fn(() => {
+					const value = inputBuffer.element(instanceIndex);
+
+					// Create a mutable result variable
+					const result = float(0).toVar();
+
+					If(value.lessThan(0), () => {
+						result.assign(-1);
+					}).ElseIf(value.greaterThan(0), () => {
+						result.assign(1);
+					});
+					// If value === 0, result stays 0
+
+					outputBuffer.element(instanceIndex).assign(result);
+				})().compute(inputData.length);
+
+				// Execute
+				await renderer.computeAsync(classify);
+
+				// Read results
+				const resultBuffer = await renderer.getArrayBufferAsync(outputBuffer.value);
+				const results = new Float32Array(resultBuffer);
+
+				output.innerHTML += '\nClassification results:\n';
+				for (let i = 0; i < inputData.length; i++) {
+					const sign = results[i] === -1 ? 'negative' : results[i] === 1 ? 'positive' : 'zero';
+					output.innerHTML += `  ${inputData[i].toString().padStart(5)} → ${results[i].toString().padStart(2)} (${sign})\n`;
+				}
+
+				output.innerHTML += '\n<span class="success">✓ All numbers classified correctly!</span>';
+
+				renderer.dispose();
+
+			} catch (error) {
+				output.innerHTML += `\n<span class="error">✗ Error: ${error.message}</span>`;
+				console.error(error);
+			}
+		};
+	</script>
+</body>
+</html>

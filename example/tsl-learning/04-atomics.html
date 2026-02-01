@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 04: Atomic Operations</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		.warning { color: #ffb74d; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			font-family: monospace;
+			line-height: 1.4;
+		}
+	</style>
+</head>
+<body>
+	<h1>TSL Learning 04: Atomic Operations</h1>
+
+	<p>
+		When multiple GPU threads need to modify the same memory location, we have a problem:
+		<strong>race conditions</strong>. Atomic operations solve this.
+	</p>
+
+	<h2>The Problem</h2>
+	<div class="diagram">
+Thread 0: read counter (0) → add 1 → write (1)
+Thread 1: read counter (0) → add 1 → write (1)  ← Problem! Both read 0!
+Thread 2: read counter (0) → add 1 → write (1)
+
+Expected result: 3
+Actual result: 1 (or some other wrong number)
+	</div>
+
+	<h2>The Solution: atomicAdd</h2>
+	<p>
+		<code>atomicAdd</code> performs read-modify-write as a single uninterruptible operation.
+		No other thread can access the memory until it's done.
+	</p>
+	<div class="diagram">
+Thread 0: atomicAdd(counter, 1) → returns 0, counter is now 1
+Thread 1: atomicAdd(counter, 1) → returns 1, counter is now 2
+Thread 2: atomicAdd(counter, 1) → returns 2, counter is now 3
+
+Result: 3 ✓
+	</div>
+
+	<h2>Important: Atomics Work on Integers Only</h2>
+	<p>
+		WebGPU only supports atomic operations on <strong>integers</strong> (int, uint).
+		If you need floats, you must use a workaround (multiply by a large number, use atomics, divide later).
+	</p>
+
+	<h2>Example: Count Positive Numbers</h2>
+	<p>Given an array of numbers, count how many are positive using atomicAdd.</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">import</span> { atomicAdd, atomicStore } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Create a counter buffer with atomic support</span>
+<span class="keyword">const</span> counterStruct = <span class="function">struct</span>({
+    count: { type: <span class="string">'int'</span>, atomic: <span class="keyword">true</span> }
+});
+<span class="keyword">const</span> counterBuffer = <span class="function">instancedArray</span>(<span class="number">1</span>, counterStruct);
+
+<span class="comment">// Initialize counter to 0</span>
+<span class="keyword">const</span> initKernel = <span class="function">Fn</span>(() => {
+    <span class="function">atomicStore</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>).<span class="function">get</span>(<span class="string">'count'</span>), <span class="number">0</span>);
+})().<span class="function">compute</span>(<span class="number">1</span>);
+
+<span class="comment">// Count positive numbers</span>
+<span class="keyword">const</span> countKernel = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
+
+    <span class="function">If</span>(value.<span class="function">greaterThan</span>(<span class="number">0</span>), () => {
+        <span class="comment">// Atomically increment counter</span>
+        <span class="function">atomicAdd</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>).<span class="function">get</span>(<span class="string">'count'</span>), <span class="number">1</span>);
+    });
+})().<span class="function">compute</span>(inputData.length);</code></pre>
+
+	<h2>Why This Matters for Edge Clipping</h2>
+	<p>
+		In the edge clipping problem, many triangles might overlap the same edge.
+		We need to <strong>atomically</strong> add each overlap to an output buffer.
+		This is exactly what <code>atomicAdd</code> enables!
+	</p>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import {
+			Fn, If, instancedArray, instanceIndex, float, int, uint,
+			atomicAdd, atomicStore, struct
+		} from 'three/tsl';
+
+		window.runExample = async function() {
+			const output = document.getElementById('output');
+			output.innerHTML = 'Initializing...';
+
+			try {
+				const renderer = new THREE.WebGPURenderer();
+				await renderer.init();
+				output.innerHTML = '<span class="success">✓ WebGPU ready</span>\n';
+
+				// Input: array of numbers
+				const inputData = new Float32Array([
+					-5, 3, 0, 7, -2, 1, -1, 8, 0, 4
+				]);
+
+				// Count expected positive numbers
+				const expectedCount = inputData.filter(x => x > 0).length;
+
+				output.innerHTML += `\nInput: [${Array.from(inputData).join(', ')}]\n`;
+				output.innerHTML += `Expected positive count: ${expectedCount}\n`;
+
+				// Create input buffer
+				const inputBuffer = instancedArray(inputData, 'float');
+
+				// Create counter buffer with atomic support
+				// We use a struct with atomic: true
+				const counterStruct = struct({
+					count: { type: 'uint', atomic: true }
+				});
+				const counterBuffer = instancedArray(1, counterStruct).setPBO(true);
+
+				// Kernel 1: Initialize counter to 0
+				const initKernel = Fn(() => {
+					atomicStore(counterBuffer.element(0).get('count'), uint(0));
+				})().compute(1);
+
+				// Kernel 2: Count positive numbers
+				const countKernel = Fn(() => {
+					const value = inputBuffer.element(instanceIndex);
+
+					If(value.greaterThan(0), () => {
+						// Atomically increment counter
+						// This is safe even with thousands of parallel threads
+						atomicAdd(counterBuffer.element(0).get('count'), uint(1));
+					});
+				})().compute(inputData.length);
+
+				// Execute both kernels
+				output.innerHTML += '\nRunning kernels...\n';
+				await renderer.computeAsync(initKernel);
+				await renderer.computeAsync(countKernel);
+
+				// Read result
+				const resultBuffer = await renderer.getArrayBufferAsync(counterBuffer.value);
+				const count = new Uint32Array(resultBuffer)[0];
+
+				output.innerHTML += `\nGPU computed count: ${count}\n`;
+
+				if (count === expectedCount) {
+					output.innerHTML += '\n<span class="success">✓ Correct! atomicAdd worked perfectly.</span>';
+				} else {
+					output.innerHTML += `\n<span class="error">✗ Wrong count. Expected ${expectedCount}, got ${count}</span>`;
+				}
+
+				// Show what would happen WITHOUT atomics
+				output.innerHTML += '\n\n<span class="warning">Note: Without atomicAdd, parallel threads would corrupt the count!</span>';
+
+				renderer.dispose();
+
+			} catch (error) {
+				output.innerHTML += `\n<span class="error">✗ Error: ${error.message}</span>`;
+				console.error(error);
+			}
+		};
+	</script>
+</body>
+</html>

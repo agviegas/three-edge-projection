@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 05: Parallel Filter Pattern</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			font-family: monospace;
+			line-height: 1.6;
+			color: #aaa;
+		}
+		.highlight { color: #4fc3f7; }
+	</style>
+</head>
+<body>
+	<h1>TSL Learning 05: Parallel Filter Pattern</h1>
+
+	<p>
+		This is the <strong>most important pattern</strong> for our edge clipping problem.
+		We need to filter items in parallel: test each item, and if it passes, add it to an output buffer.
+	</p>
+
+	<h2>The Pattern</h2>
+	<div class="diagram">
+<span class="highlight">Input:</span>  [A, B, C, D, E, F, G, H]  (8 items to test)
+
+<span class="highlight">GPU threads run in parallel:</span>
+  Thread 0: test A → passes  → atomicAdd gets slot 0 → write A to output[0]
+  Thread 1: test B → fails   → (skip)
+  Thread 2: test C → passes  → atomicAdd gets slot 1 → write C to output[1]
+  Thread 3: test D → passes  → atomicAdd gets slot 2 → write D to output[2]
+  Thread 4: test E → fails   → (skip)
+  Thread 5: test F → passes  → atomicAdd gets slot 3 → write F to output[3]
+  Thread 6: test G → fails   → (skip)
+  Thread 7: test H → passes  → atomicAdd gets slot 4 → write H to output[4]
+
+<span class="highlight">Output:</span> [A, C, D, F, H]  (5 items that passed)
+<span class="highlight">Count:</span>  5
+	</div>
+
+	<h2>Why This Works</h2>
+	<p>
+		The key insight is using <code>atomicAdd</code> to get a unique output slot:
+	</p>
+	<pre><code><span class="keyword">const</span> outputIndex = <span class="function">atomicAdd</span>(counter, <span class="number">1</span>);  <span class="comment">// Returns current value, then increments</span>
+outputBuffer.<span class="function">element</span>(outputIndex).<span class="function">assign</span>(myValue);</code></pre>
+	<p>
+		Each thread that passes the test gets a <strong>unique slot</strong> in the output buffer.
+		The order might vary (thread execution order isn't guaranteed), but no data is lost.
+	</p>
+
+	<h2>Example: Filter Positive Numbers</h2>
+	<p>Given an array of numbers, output only the positive ones.</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>The Code</h2>
+	<pre><code><span class="keyword">const</span> filterKernel = <span class="function">Fn</span>(() => {
+    <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
+
+    <span class="comment">// Test: is this value positive?</span>
+    <span class="function">If</span>(value.<span class="function">greaterThan</span>(<span class="number">0</span>), () => {
+        <span class="comment">// Get a unique output slot using atomicAdd</span>
+        <span class="keyword">const</span> outputIndex = <span class="function">atomicAdd</span>(
+            counterBuffer.<span class="function">element</span>(<span class="number">0</span>).<span class="function">get</span>(<span class="string">'count'</span>),
+            <span class="function">uint</span>(<span class="number">1</span>)
+        );
+
+        <span class="comment">// Write the value to our slot</span>
+        outputBuffer.<span class="function">element</span>(outputIndex).<span class="function">assign</span>(value);
+    });
+})().<span class="function">compute</span>(inputData.length);</code></pre>
+
+	<h2>Connection to Edge Clipping</h2>
+	<p>
+		The edge clipping problem is essentially a parallel filter:
+	</p>
+	<ul>
+		<li><strong>Input:</strong> Candidate (edge, triangle) pairs</li>
+		<li><strong>Test:</strong> Does this edge overlap this triangle when projected?</li>
+		<li><strong>Output:</strong> Only the overlaps that exist</li>
+	</ul>
+	<p>
+		Instead of filtering numbers, we filter edge-triangle pairs and output overlap ranges.
+	</p>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import {
+			Fn, If, instancedArray, instanceIndex, float, uint,
+			atomicAdd, atomicStore, struct
+		} from 'three/tsl';
+
+		window.runExample = async function() {
+			const output = document.getElementById('output');
+			output.innerHTML = 'Initializing...';
+
+			try {
+				const renderer = new THREE.WebGPURenderer();
+				await renderer.init();
+				output.innerHTML = '<span class="success">✓ WebGPU ready</span>\n';
+
+				// Input: array of numbers (some positive, some negative, some zero)
+				const inputData = new Float32Array([
+					-5, 3, 0, 7, -2, 1, -1, 8, 0, 4, -3, 2
+				]);
+
+				// Expected output (positive numbers only)
+				const expectedOutput = Array.from(inputData).filter(x => x > 0);
+
+				output.innerHTML += `\nInput:    [${Array.from(inputData).join(', ')}]\n`;
+				output.innerHTML += `Expected: [${expectedOutput.join(', ')}] (${expectedOutput.length} items)\n`;
+
+				// Create buffers
+				const inputBuffer = instancedArray(inputData, 'float');
+
+				// Output buffer - allocate enough space for all inputs (worst case)
+				const outputBuffer = instancedArray(new Float32Array(inputData.length), 'float').setPBO(true);
+
+				// Counter buffer with atomic support
+				const counterStruct = struct({
+					count: { type: 'uint', atomic: true }
+				});
+				const counterBuffer = instancedArray(1, counterStruct).setPBO(true);
+
+				// Initialize counter
+				const initKernel = Fn(() => {
+					atomicStore(counterBuffer.element(0).get('count'), uint(0));
+				})().compute(1);
+
+				// Filter kernel: output only positive numbers
+				const filterKernel = Fn(() => {
+					const value = inputBuffer.element(instanceIndex);
+
+					// Test: is this value positive?
+					If(value.greaterThan(0), () => {
+						// Get unique output slot using atomicAdd
+						// atomicAdd returns the OLD value before incrementing
+						const outputIndex = atomicAdd(
+							counterBuffer.element(0).get('count'),
+							uint(1)
+						);
+
+						// Write value to our reserved slot
+						outputBuffer.element(outputIndex).assign(value);
+					});
+				})().compute(inputData.length);
+
+				// Execute
+				output.innerHTML += '\nRunning parallel filter...\n';
+				await renderer.computeAsync(initKernel);
+				await renderer.computeAsync(filterKernel);
+
+				// Read results
+				const countBuffer = await renderer.getArrayBufferAsync(counterBuffer.value);
+				const count = new Uint32Array(countBuffer)[0];
+
+				const resultBuffer = await renderer.getArrayBufferAsync(outputBuffer.value);
+				const results = new Float32Array(resultBuffer).slice(0, count);
+
+				output.innerHTML += `\nGPU output: [${Array.from(results).join(', ')}] (${count} items)\n`;
+
+				// Verify (note: order might differ due to parallel execution)
+				const sortedExpected = [...expectedOutput].sort((a, b) => a - b);
+				const sortedResults = [...results].sort((a, b) => a - b);
+
+				const isCorrect = sortedExpected.length === sortedResults.length &&
+					sortedExpected.every((v, i) => v === sortedResults[i]);
+
+				if (isCorrect) {
+					output.innerHTML += '\n<span class="success">✓ All positive numbers were filtered correctly!</span>';
+					output.innerHTML += '\n<span class="success">  (Order may differ due to parallel execution - that\'s OK)</span>';
+				} else {
+					output.innerHTML += '\n<span class="error">✗ Results don\'t match expected output</span>';
+				}
+
+				renderer.dispose();
+
+			} catch (error) {
+				output.innerHTML += `\n<span class="error">✗ Error: ${error.message}</span>`;
+				console.error(error);
+			}
+		};
+	</script>
+</body>
+</html>

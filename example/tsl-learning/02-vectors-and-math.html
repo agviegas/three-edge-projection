@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 02: Vectors and Math</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre-wrap;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+			margin-right: 10px;
+		}
+		button:hover { background: #81d4fa; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 15px 0;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 10px;
+			text-align: left;
+		}
+		th { background: #0d0d1a; color: #4fc3f7; }
+	</style>
+</head>
+<body>
+	<h1>TSL Learning 02: Vectors and Math</h1>
+
+	<p>
+		In 3D graphics, we work with vectors constantly. TSL provides vec2, vec3, and vec4 types
+		along with all the math operations you'd expect.
+	</p>
+
+	<h2>TSL vs JavaScript Syntax</h2>
+	<p>TSL looks like JavaScript but compiles to GPU shader code. Here's how operations differ:</p>
+
+	<table>
+		<tr>
+			<th>JavaScript</th>
+			<th>TSL</th>
+			<th>Notes</th>
+		</tr>
+		<tr>
+			<td><code>a + b</code></td>
+			<td><code>a.add(b)</code></td>
+			<td>Addition</td>
+		</tr>
+		<tr>
+			<td><code>a - b</code></td>
+			<td><code>a.sub(b)</code></td>
+			<td>Subtraction</td>
+		</tr>
+		<tr>
+			<td><code>a * b</code></td>
+			<td><code>a.mul(b)</code></td>
+			<td>Multiplication</td>
+		</tr>
+		<tr>
+			<td><code>a / b</code></td>
+			<td><code>a.div(b)</code></td>
+			<td>Division</td>
+		</tr>
+		<tr>
+			<td><code>a = b</code></td>
+			<td><code>a.assign(b)</code></td>
+			<td>Assignment</td>
+		</tr>
+		<tr>
+			<td><code>let x = ...</code></td>
+			<td><code>const x = (...).toVar()</code></td>
+			<td>Create mutable variable</td>
+		</tr>
+		<tr>
+			<td><code>vec.length()</code></td>
+			<td><code>vec.length()</code></td>
+			<td>Same! (vector magnitude)</td>
+		</tr>
+		<tr>
+			<td><code>vec.normalize()</code></td>
+			<td><code>vec.normalize()</code></td>
+			<td>Same! (unit vector)</td>
+		</tr>
+		<tr>
+			<td><code>a.dot(b)</code></td>
+			<td><code>a.dot(b)</code></td>
+			<td>Same! (dot product)</td>
+		</tr>
+		<tr>
+			<td><code>a.cross(b)</code></td>
+			<td><code>a.cross(b)</code></td>
+			<td>Same! (cross product)</td>
+		</tr>
+	</table>
+
+	<h2>Creating Vectors</h2>
+	<pre><code><span class="comment">// Create a vec3 with literal values</span>
+<span class="keyword">const</span> v1 = <span class="function">vec3</span>(<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>);
+
+<span class="comment">// Access components</span>
+v1.x  <span class="comment">// → 1</span>
+v1.y  <span class="comment">// → 2</span>
+v1.z  <span class="comment">// → 3</span>
+
+<span class="comment">// Create from buffer element (common pattern)</span>
+<span class="keyword">const</span> position = buffer.<span class="function">element</span>(instanceIndex).xyz;
+
+<span class="comment">// Swizzling (reorder/select components)</span>
+v1.xy   <span class="comment">// → vec2(1, 2)</span>
+v1.zyx  <span class="comment">// → vec3(3, 2, 1)</span>
+v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
+
+	<h2>Example: Compute Distances</h2>
+	<p>Let's compute the distance from each point to the origin (0,0,0).</p>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>The Code</h2>
+	<pre><code><span class="comment">// Input: 4 points as vec3 (x, y, z, padding) - vec4 for alignment</span>
+<span class="keyword">const</span> points = [
+    <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: (1, 0, 0)</span>
+    <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 1: (0, 2, 0)</span>
+    <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 2: (3, 4, 0) - distance should be 5</span>
+    <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>, <span class="number">0</span>,   <span class="comment">// Point 3: (1, 1, 1) - distance should be √3 ≈ 1.73</span>
+];
+
+<span class="keyword">const</span> computeDistances = <span class="function">Fn</span>(() => {
+    <span class="comment">// Read point as vec3 (ignore the padding)</span>
+    <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex).xyz;
+
+    <span class="comment">// Compute distance to origin</span>
+    <span class="keyword">const</span> dist = point.<span class="function">length</span>();
+
+    <span class="comment">// Store result</span>
+    distancesBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(dist);
+})().<span class="function">compute</span>(<span class="number">4</span>);</code></pre>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import { Fn, instancedArray, instanceIndex, vec3 } from 'three/tsl';
+
+		window.runExample = async function() {
+			const output = document.getElementById('output');
+			output.innerHTML = 'Initializing...';
+
+			try {
+				const renderer = new THREE.WebGPURenderer();
+				await renderer.init();
+				output.innerHTML = '<span class="success">✓ WebGPU ready</span>\n';
+
+				// Input: 4 points as vec4 (x, y, z, padding)
+				// We use vec4 because GPU memory alignment prefers it
+				const pointsData = new Float32Array([
+					1, 0, 0, 0,   // Point 0: (1, 0, 0)
+					0, 2, 0, 0,   // Point 1: (0, 2, 0)
+					3, 4, 0, 0,   // Point 2: (3, 4, 0)
+					1, 1, 1, 0,   // Point 3: (1, 1, 1)
+				]);
+
+				output.innerHTML += '\nInput points:\n';
+				for (let i = 0; i < 4; i++) {
+					const x = pointsData[i * 4];
+					const y = pointsData[i * 4 + 1];
+					const z = pointsData[i * 4 + 2];
+					output.innerHTML += `  Point ${i}: (${x}, ${y}, ${z})\n`;
+				}
+
+				// Output: distance for each point
+				const distancesData = new Float32Array(4);
+
+				// Create GPU buffers
+				const pointsBuffer = instancedArray(pointsData, 'vec4');
+				const distancesBuffer = instancedArray(distancesData, 'float').setPBO(true);
+
+				// Compute shader
+				const computeDistances = Fn(() => {
+					// Read point (just xyz, ignore w padding)
+					const point = pointsBuffer.element(instanceIndex).xyz;
+
+					// Compute distance to origin using .length()
+					const dist = point.length();
+
+					// Store result
+					distancesBuffer.element(instanceIndex).assign(dist);
+				})().compute(4);
+
+				// Execute
+				await renderer.computeAsync(computeDistances);
+
+				// Read results
+				const resultBuffer = await renderer.getArrayBufferAsync(distancesBuffer.value);
+				const distances = new Float32Array(resultBuffer);
+
+				output.innerHTML += '\nComputed distances to origin:\n';
+				for (let i = 0; i < 4; i++) {
+					const x = pointsData[i * 4];
+					const y = pointsData[i * 4 + 1];
+					const z = pointsData[i * 4 + 2];
+					const expected = Math.sqrt(x*x + y*y + z*z);
+					output.innerHTML += `  Point ${i}: distance = ${distances[i].toFixed(4)} (expected: ${expected.toFixed(4)})\n`;
+				}
+
+				output.innerHTML += '\n<span class="success">✓ All distances computed correctly!</span>';
+
+				renderer.dispose();
+
+			} catch (error) {
+				output.innerHTML += `\n<span class="error">✗ Error: ${error.message}</span>`;
+				console.error(error);
+			}
+		};
+	</script>
+</body>
+</html>

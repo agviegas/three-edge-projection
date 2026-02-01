@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>TSL Learning 01: Hello Compute</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 800px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 30px; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; }
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		#output {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #4fc3f7;
+			margin: 20px 0;
+			font-family: monospace;
+		}
+		.success { color: #81c784; }
+		.error { color: #ef5350; }
+		button {
+			background: #4fc3f7;
+			color: #000;
+			border: none;
+			padding: 10px 20px;
+			border-radius: 6px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 600;
+		}
+		button:hover { background: #81d4fa; }
+	</style>
+</head>
+<body>
+	<h1>TSL Learning 01: Hello Compute</h1>
+
+	<p>
+		This is the simplest possible WebGPU compute shader using Three.js TSL (Three Shading Language).
+		We'll create a compute shader that doubles each number in an array.
+	</p>
+
+	<h2>The Concept</h2>
+	<p>
+		A <strong>compute shader</strong> runs on the GPU in parallel. Instead of processing pixels for rendering,
+		it processes arbitrary data. Think of it like a massively parallel for-loop.
+	</p>
+	<pre><code><span class="comment">// CPU (sequential):</span>
+<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < <span class="number">1000</span>; i++) {
+    data[i] = data[i] * <span class="number">2</span>;
+}
+
+<span class="comment">// GPU (parallel):</span>
+<span class="comment">// All 1000 elements are processed SIMULTANEOUSLY</span>
+<span class="comment">// Each "thread" knows its index via `instanceIndex`</span></code></pre>
+
+	<h2>Key TSL Concepts</h2>
+	<ul>
+		<li><strong>instancedArray()</strong> - Creates a GPU buffer from a typed array</li>
+		<li><strong>instanceIndex</strong> - Built-in variable: which element am I processing?</li>
+		<li><strong>Fn()</strong> - Defines a TSL function (like a shader)</li>
+		<li><strong>.compute(N)</strong> - Run the shader N times in parallel</li>
+	</ul>
+
+	<h2>The Code</h2>
+	<pre><code><span class="comment">// 1. Create input data</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>]);
+
+<span class="comment">// 2. Upload to GPU buffer</span>
+<span class="keyword">const</span> buffer = <span class="function">instancedArray</span>(inputData, <span class="string">'float'</span>);
+
+<span class="comment">// 3. Define compute shader</span>
+<span class="keyword">const</span> computeShader = <span class="function">Fn</span>(() => {
+    <span class="comment">// Each thread reads its element, doubles it, writes it back</span>
+    <span class="keyword">const</span> value = buffer.<span class="function">element</span>(instanceIndex);
+    buffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(value.<span class="function">mul</span>(<span class="number">2</span>));
+})().<span class="function">compute</span>(<span class="number">5</span>);  <span class="comment">// Run 5 times (once per element)</span>
+
+<span class="comment">// 4. Execute on GPU</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(computeShader);
+
+<span class="comment">// 5. Read results back to CPU</span>
+<span class="keyword">const</span> result = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(buffer.value);</code></pre>
+
+	<button onclick="runExample()">Run Example</button>
+
+	<div id="output">Click "Run Example" to see the result...</div>
+
+	<h2>What's Happening?</h2>
+	<ol>
+		<li>We create a Float32Array with 5 numbers: [1, 2, 3, 4, 5]</li>
+		<li>Upload it to the GPU as a storage buffer</li>
+		<li>Define a compute shader that multiplies each element by 2</li>
+		<li>The GPU runs 5 parallel threads, each processing one element</li>
+		<li>We read the results back: [2, 4, 6, 8, 10]</li>
+	</ol>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three": "../three/build/three.webgpu.js",
+			"three/webgpu": "../three/build/three.webgpu.js",
+			"three/tsl": "../three/build/three.tsl.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		import * as THREE from 'three/webgpu';
+		import { Fn, instancedArray, instanceIndex } from 'three/tsl';
+
+		// Make runExample available globally
+		window.runExample = async function() {
+			const output = document.getElementById('output');
+			output.innerHTML = 'Initializing WebGPU...';
+
+			try {
+				// Create a WebGPU renderer (needed for compute)
+				const renderer = new THREE.WebGPURenderer();
+				await renderer.init();
+
+				output.innerHTML += '\n<span class="success">✓ WebGPU initialized</span>';
+
+				// ============================================
+				// THE ACTUAL EXAMPLE STARTS HERE
+				// ============================================
+
+				// 1. Create input data
+				const inputData = new Float32Array([1, 2, 3, 4, 5]);
+				output.innerHTML += `\n\nInput:  [${inputData.join(', ')}]`;
+
+				// 2. Upload to GPU buffer
+				// instancedArray creates a storage buffer on the GPU
+				// 'float' means each element is a single float
+				const buffer = instancedArray(inputData, 'float').setPBO(true);
+
+				// 3. Define the compute shader
+				const computeShader = Fn(() => {
+					// instanceIndex is a built-in: which thread am I?
+					// buffer.element(i) accesses the i-th element
+					const value = buffer.element(instanceIndex);
+
+					// Multiply by 2 and write back
+					// .assign() is like = in regular code
+					// .mul() is like * in regular code
+					buffer.element(instanceIndex).assign(value.mul(2));
+				})().compute(5);  // Run 5 threads (one per element)
+
+				output.innerHTML += '\n\nRunning compute shader...';
+
+				// 4. Execute on GPU
+				await renderer.computeAsync(computeShader);
+
+				// 5. Read results back
+				const resultBuffer = await renderer.getArrayBufferAsync(buffer.value);
+				const result = new Float32Array(resultBuffer);
+
+				output.innerHTML += '\n<span class="success">✓ Compute shader finished</span>';
+				output.innerHTML += `\n\nOutput: [${Array.from(result).join(', ')}]`;
+				output.innerHTML += '\n\n<span class="success">✓ Each element was doubled!</span>';
+
+				// Clean up
+				renderer.dispose();
+
+			} catch (error) {
+				output.innerHTML += `\n<span class="error">✗ Error: ${error.message}</span>`;
+				console.error(error);
+			}
+		};
+	</script>
+</body>
+</html>

@@ -91,6 +91,9 @@ class ProjectedEdgeCollector {
 
 		const { meshes, bvhs, visibleEdges, hiddenEdges, iterationTime } = this;
 		let time = performance.now();
+
+		// Build mesh BVHs
+		Logger.startStep( 'Building mesh BVH' );
 		for ( let i = 0; i < meshes.length; i ++ ) {
 
 			if ( performance.now() - time > iterationTime ) {
@@ -119,8 +122,12 @@ class ProjectedEdgeCollector {
 
 		}
 
-		// construct bvh
+		// Build line BVH
+		Logger.startStep( 'Building line BVH' );
 		const edgesBvh = new LineObjectsBVH( edges, { maxLeafSize: 2, strategy: SAH } );
+
+		// BVHcast overlaps
+		Logger.startStep( 'BVHcast overlaps' );
 		time = performance.now();
 		for ( let m = 0; m < meshes.length; m ++ ) {
 
@@ -143,7 +150,8 @@ class ProjectedEdgeCollector {
 
 		}
 
-		// construct the projections
+		// Convert overlaps to lines
+		Logger.startStep( 'Converting overlaps to lines' );
 		for ( let i = 0; i < edges.length; i ++ ) {
 
 			if ( performance.now() - time > iterationTime ) {
@@ -253,21 +261,21 @@ export class ProjectionGenerator {
 		edgeGenerator.thresholdAngle = angleThreshold;
 		edgeGenerator.projectionDirection.copy( UP_VECTOR );
 
-		Logger.startStep( 'Extracting edges' );
-		onProgress( 'Extracting edges' );
+		Logger.startStep( 'Generating candidate edges' );
+		onProgress( 'Generating candidate edges' );
 		let edges = [];
 		yield* edgeGenerator.getEdgesGenerator( scene, edges, options );
 		if ( includeIntersectionEdges ) {
 
-			Logger.startStep( 'Extracting intersection edges' );
-			onProgress( 'Extracting self-intersecting edges' );
+			Logger.startStep( 'Generating intersection edges' );
+			onProgress( 'Generating intersection edges' );
 			yield* edgeGenerator.getIntersectionEdgesGenerator( scene, edges, options );
 
 		}
 
 		// filter out any degenerate projected edges
-		Logger.startStep( 'Filtering edges' );
-		onProgress( 'Filtering edges' );
+		Logger.startStep( 'Pre-filtering edges' );
+		onProgress( 'Pre-filtering edges' );
 		edges = edges.filter( e => ! isYProjectedLineDegenerate( e ) );
 
 		yield;
@@ -275,17 +283,14 @@ export class ProjectionGenerator {
 		const collector = new ProjectedEdgeCollector( scene );
 		collector.iterationTime = iterationTime;
 
-		Logger.startStep( 'Clipping edges' );
-		onProgress( 'Clipping edges' );
+		onProgress( 'Building BVH & computing overlaps' );
 		yield* collector.addEdgesGenerator( edges, {
 			onProgress: ! onProgress ? null : ( prog, tot ) => {
 
-				onProgress( 'Clipping edges', prog / tot, collector );
+				onProgress( 'Building BVH & computing overlaps', prog / tot, collector );
 
 			},
 		} );
-
-		Logger.endStep();
 		Logger.printSummary();
 
 		return collector;

@@ -108,19 +108,12 @@ Result: 3 ✓
 		<li><code>.toAtomic()</code> - Marks a buffer for atomic operations</li>
 		<li><code>atomicStore(ptr, value)</code> - Write a value atomically</li>
 		<li><code>atomicAdd(ptr, value)</code> - Add to a value atomically (returns the old value)</li>
-		<li><code>atomicLoad(ptr)</code> - Read a value atomically</li>
+		<li><code>atomicLoad(ptr)</code> - Read a value atomically (for use within shaders)</li>
 	</ul>
-	<p>
-		<strong>Important:</strong> You cannot read atomic buffers directly back to JavaScript.
-		Instead, copy the result to a non-atomic buffer using <code>atomicLoad</code>, then read that buffer.
-	</p>
 
 	<h2>The Code</h2>
 	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
-<span class="keyword">import</span> {
-    Fn, instancedArray, instanceIndex, uint,
-    atomicAdd, atomicStore, atomicLoad
-} <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex, atomicAdd } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
 
 <span class="comment">// Initialize WebGPU</span>
 <span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
@@ -130,36 +123,20 @@ Result: 3 ✓
 <span class="keyword">const</span> inputData = <span class="keyword">new</span> Uint32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>, <span class="number">7</span>, <span class="number">8</span>, <span class="number">9</span>, <span class="number">10</span>]);
 <span class="keyword">const</span> inputBuffer = <span class="function">instancedArray</span>(inputData, <span class="string">'uint'</span>);
 
-<span class="comment">// Create an atomic counter buffer</span>
+<span class="comment">// Create an atomic counter buffer (initialized to 0)</span>
 <span class="keyword">const</span> counterBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array([<span class="number">0</span>]), <span class="string">'uint'</span>).<span class="function">toAtomic</span>();
 
-<span class="comment">// Create a separate buffer for reading results (non-atomic)</span>
-<span class="keyword">const</span> resultBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array([<span class="number">0</span>]), <span class="string">'uint'</span>);
-
-<span class="comment">// Kernel 1: Initialize sum to 0</span>
-<span class="keyword">const</span> initKernel = <span class="function">Fn</span>(() => {
-    <span class="function">atomicStore</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>), <span class="function">uint</span>(<span class="number">0</span>));
-})().<span class="function">compute</span>(<span class="number">1</span>);
-
-<span class="comment">// Kernel 2: Sum all values atomically</span>
+<span class="comment">// Sum all values atomically</span>
 <span class="keyword">const</span> sumKernel = <span class="function">Fn</span>(() => {
     <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
     <span class="function">atomicAdd</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>), value);
 })().<span class="function">compute</span>(inputData.length);
 
-<span class="comment">// Kernel 3: Copy result to readable buffer</span>
-<span class="keyword">const</span> copyKernel = <span class="function">Fn</span>(() => {
-    <span class="keyword">const</span> sum = <span class="function">atomicLoad</span>(counterBuffer.<span class="function">element</span>(<span class="number">0</span>));
-    resultBuffer.<span class="function">element</span>(<span class="number">0</span>).<span class="function">assign</span>(sum);
-})().<span class="function">compute</span>(<span class="number">1</span>);
-
-<span class="comment">// Execute kernels</span>
-<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(initKernel);
+<span class="comment">// Execute kernel</span>
 <span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(sumKernel);
-<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(copyKernel);
 
 <span class="comment">// Read result back to JavaScript</span>
-<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(resultBuffer.value);
+<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(counterBuffer.value);
 <span class="keyword">const</span> sum = <span class="keyword">new</span> Uint32Array(gpuBuffer)[<span class="number">0</span>];
 console.<span class="function">log</span>(<span class="string">'Sum:'</span>, sum); <span class="comment">// 55</span></code></pre>
 
@@ -182,10 +159,7 @@ console.<span class="function">log</span>(<span class="string">'Sum:'</span>, su
 
 	<script type="module">
 		import * as THREE from 'three/webgpu';
-		import {
-			Fn, instancedArray, instanceIndex, uint,
-			atomicAdd, atomicStore, atomicLoad
-		} from 'three/tsl';
+		import { Fn, instancedArray, instanceIndex, atomicAdd } from 'three/tsl';
 
 		window.runExample = async function() {
 			const output = document.getElementById('output');
@@ -208,38 +182,21 @@ console.<span class="function">log</span>(<span class="string">'Sum:'</span>, su
 				// Create input buffer (uint)
 				const inputBuffer = instancedArray(inputData, 'uint');
 
-				// Create atomic counter buffer using .toAtomic()
+				// Create atomic counter buffer (initialized to 0)
 				const counterBuffer = instancedArray(new Uint32Array([0]), 'uint').toAtomic();
 
-				// Create a separate output buffer for reading results
-				const resultBuffer = instancedArray(new Uint32Array([0]), 'uint');
-
-				// Kernel 1: Initialize sum to 0
-				const initKernel = Fn(() => {
-					atomicStore(counterBuffer.element(0), uint(0));
-				})().compute(1);
-
-				// Kernel 2: Sum all values atomically
+				// Sum all values atomically
 				const sumKernel = Fn(() => {
 					const value = inputBuffer.element(instanceIndex);
-					// Atomically add this value to the total
 					atomicAdd(counterBuffer.element(0), value);
 				})().compute(inputData.length);
 
-				// Kernel 3: Copy result to readable buffer using atomicLoad
-				const copyKernel = Fn(() => {
-					const sum = atomicLoad(counterBuffer.element(0));
-					resultBuffer.element(0).assign(sum);
-				})().compute(1);
-
-				// Execute all kernels
-				output.innerHTML += '\nRunning kernels...\n';
-				await renderer.computeAsync(initKernel);
+				// Execute kernel
+				output.innerHTML += '\nRunning kernel...\n';
 				await renderer.computeAsync(sumKernel);
-				await renderer.computeAsync(copyKernel);
 
-				// Read result from the non-atomic buffer
-				const gpuBuffer = await renderer.getArrayBufferAsync(resultBuffer.value);
+				// Read result directly from atomic buffer
+				const gpuBuffer = await renderer.getArrayBufferAsync(counterBuffer.value);
 				const sum = new Uint32Array(gpuBuffer)[0];
 
 				output.innerHTML += `\nGPU computed sum: ${sum}\n`;

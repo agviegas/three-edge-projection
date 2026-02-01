@@ -156,14 +156,22 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 	<div id="output">Click "Run Example" to see the result...</div>
 
 	<h2>The Code</h2>
-	<pre><code><span class="comment">// Input: 4 points as vec3 (x, y, z)</span>
-<span class="keyword">const</span> points = [
+	<pre><code><span class="comment">// 1. Input data: 4 points as vec3 (x, y, z)</span>
+<span class="keyword">const</span> pointsData = <span class="keyword">new</span> Float32Array([
     <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: (1, 0, 0)</span>
     <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>,   <span class="comment">// Point 1: (0, 2, 0)</span>
     <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>,   <span class="comment">// Point 2: (3, 4, 0) - distance should be 5</span>
     <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>,   <span class="comment">// Point 3: (1, 1, 1) - distance should be √3 ≈ 1.73</span>
-];
+]);
 
+<span class="comment">// 2. Output data: one float per point</span>
+<span class="keyword">const</span> distancesData = <span class="keyword">new</span> Float32Array(<span class="number">4</span>);
+
+<span class="comment">// 3. Create GPU buffers</span>
+<span class="keyword">const</span> pointsBuffer = <span class="function">instancedArray</span>(pointsData, <span class="string">'vec3'</span>);
+<span class="keyword">const</span> distancesBuffer = <span class="function">instancedArray</span>(distancesData, <span class="string">'float'</span>);
+
+<span class="comment">// 4. Define compute shader</span>
 <span class="keyword">const</span> computeDistances = <span class="function">Fn</span>(() => {
     <span class="comment">// Read point as vec3</span>
     <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex);
@@ -173,7 +181,11 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 
     <span class="comment">// Store result</span>
     distancesBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(dist);
-})().<span class="function">compute</span>(<span class="number">4</span>);</code></pre>
+})().<span class="function">compute</span>(<span class="number">4</span>);
+
+<span class="comment">// 5. Execute and read results</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(computeDistances);
+<span class="keyword">const</span> result = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(distancesBuffer.value);</code></pre>
 
 	<script type="importmap">
 	{

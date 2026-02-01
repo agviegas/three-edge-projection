@@ -129,7 +129,7 @@
 
 	<div class="lesson">
 		<h3><a href="02-edge-extraction.html">02: Generating Candidate Edges</a></h3>
-		<p>How EdgeGenerator collects all edges that might be visible: hard edges from face angles and silhouette edges from projection direction.</p>
+		<p>How EdgeGenerator collects all edges that might be visible: hard edges from face angles and silhouette edges from projection direction. <em>(Pipeline steps 1-2)</em></p>
 		<div class="topics">
 			<span>Vertex Hashing</span>
 			<span>Edge Matching</span>
@@ -150,7 +150,7 @@
 
 	<div class="lesson">
 		<h3><a href="04-occlusion-clipping.html">04: Occlusion & Clipping - BVHcast Overlaps</a></h3>
-		<p>Building a BVH of all lines, then comparing against mesh BVHs to find which sections are occluded. The core visibility algorithm.</p>
+		<p>Building a BVH of all lines, then comparing against mesh BVHs to find which sections are occluded. The core visibility algorithm. <em>(Pipeline steps 3-4)</em></p>
 		<div class="topics">
 			<span>LineObjectsBVH</span>
 			<span>bvhcastEdges</span>
@@ -161,7 +161,7 @@
 
 	<div class="lesson">
 		<h3><a href="05-putting-it-together.html">05: Converting Overlaps to Lines</a></h3>
-		<p>How overlap ranges are converted to visible/hidden line segments, and how ProjectionGenerator orchestrates the full pipeline.</p>
+		<p>How overlap ranges are converted to visible/hidden line segments, and how ProjectionGenerator orchestrates the full pipeline. <em>(Pipeline step 5)</em></p>
 		<div class="topics">
 			<span>overlapsToLines</span>
 			<span>ProjectionGenerator</span>

@@ -94,31 +94,58 @@
 	<div id="output">Click "Run GPU Test" to compute which points are inside the triangle...</div>
 
 	<h2>The TSL Code</h2>
-	<pre><code><span class="comment">// Sign of cross product tells us which side of an edge the point is on</span>
-<span class="keyword">const</span> sign = (p, a, b) => {
-    <span class="keyword">return</span> (p.x.<span class="function">sub</span>(b.x)).<span class="function">mul</span>(a.y.<span class="function">sub</span>(b.y))
-           .<span class="function">sub</span>((a.x.<span class="function">sub</span>(b.x)).<span class="function">mul</span>(p.y.<span class="function">sub</span>(b.y)));
-};
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex, select } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
 
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Triangle vertices (vec4 for alignment, using xy)</span>
+<span class="keyword">const</span> triangleData = <span class="keyword">new</span> Float32Array([
+    <span class="number">0.5</span>, <span class="number">0.1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// A</span>
+    <span class="number">0.15</span>, <span class="number">0.85</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="comment">// B</span>
+    <span class="number">0.85</span>, <span class="number">0.85</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="comment">// C</span>
+]);
+<span class="keyword">const</span> triangleBuffer = <span class="function">instancedArray</span>(triangleData, <span class="string">'vec4'</span>);
+
+<span class="comment">// Test points (vec4 for alignment, using xy)</span>
+<span class="keyword">const</span> pointsData = <span class="keyword">new</span> Float32Array([...]);  <span class="comment">// your points</span>
+<span class="keyword">const</span> pointsBuffer = <span class="function">instancedArray</span>(pointsData, <span class="string">'vec4'</span>);
+
+<span class="comment">// Results: 1 if inside, 0 if outside</span>
+<span class="keyword">const</span> resultsBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Uint32Array(numPoints), <span class="string">'uint'</span>);
+
+<span class="comment">// Point-in-triangle test kernel</span>
 <span class="keyword">const</span> pointInTriangle = <span class="function">Fn</span>(() => {
-    <span class="comment">// Load point and triangle</span>
     <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex).xy;
     <span class="keyword">const</span> a = triangleBuffer.<span class="function">element</span>(<span class="number">0</span>).xy;
     <span class="keyword">const</span> b = triangleBuffer.<span class="function">element</span>(<span class="number">1</span>).xy;
     <span class="keyword">const</span> c = triangleBuffer.<span class="function">element</span>(<span class="number">2</span>).xy;
 
-    <span class="comment">// Check which side of each edge the point is on</span>
-    <span class="keyword">const</span> d1 = sign(point, a, b);
-    <span class="keyword">const</span> d2 = sign(point, b, c);
-    <span class="keyword">const</span> d3 = sign(point, c, a);
+    <span class="comment">// Sign function: which side of edge (a,b) is point p on?</span>
+    <span class="keyword">const</span> sign = (px, py, ax, ay, bx, by) => {
+        <span class="keyword">return</span> (px.<span class="function">sub</span>(bx)).<span class="function">mul</span>(ay.<span class="function">sub</span>(by)).<span class="function">sub</span>((ax.<span class="function">sub</span>(bx)).<span class="function">mul</span>(py.<span class="function">sub</span>(by)));
+    };
 
-    <span class="comment">// Point is inside if all signs are same (all positive or all negative)</span>
+    <span class="keyword">const</span> d1 = sign(point.x, point.y, a.x, a.y, b.x, b.y);
+    <span class="keyword">const</span> d2 = sign(point.x, point.y, b.x, b.y, c.x, c.y);
+    <span class="keyword">const</span> d3 = sign(point.x, point.y, c.x, c.y, a.x, a.y);
+
+    <span class="comment">// Inside if all signs are same (all ≥0 or all ≤0)</span>
     <span class="keyword">const</span> hasNeg = d1.<span class="function">lessThan</span>(<span class="number">0</span>).<span class="function">or</span>(d2.<span class="function">lessThan</span>(<span class="number">0</span>)).<span class="function">or</span>(d3.<span class="function">lessThan</span>(<span class="number">0</span>));
     <span class="keyword">const</span> hasPos = d1.<span class="function">greaterThan</span>(<span class="number">0</span>).<span class="function">or</span>(d2.<span class="function">greaterThan</span>(<span class="number">0</span>)).<span class="function">or</span>(d3.<span class="function">greaterThan</span>(<span class="number">0</span>));
+    <span class="keyword">const</span> inside = hasNeg.<span class="function">and</span>(hasPos).<span class="function">not</span>();
 
-    <span class="keyword">const</span> inside = hasNeg.<span class="function">and</span>(hasPos).<span class="function">not</span>();  <span class="comment">// NOT(has both signs)</span>
-    resultsBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(inside);
-})().<span class="function">compute</span>(numPoints);</code></pre>
+    resultsBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(<span class="function">select</span>(inside, <span class="number">1</span>, <span class="number">0</span>));
+})().<span class="function">compute</span>(numPoints);
+
+<span class="comment">// Execute</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(pointInTriangle);
+
+<span class="comment">// Read results</span>
+<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(resultsBuffer.value);
+<span class="keyword">const</span> results = <span class="keyword">new</span> Uint32Array(gpuBuffer);</code></pre>
 
 	<script type="importmap">
 	{
@@ -228,7 +255,7 @@
 				// Create buffers
 				const triangleBuffer = instancedArray(triangleData, 'vec4');
 				const pointsBuffer = instancedArray(pointsData, 'vec4');
-				const resultsBuffer = instancedArray(new Uint32Array(numPoints), 'uint').setPBO(true);
+				const resultsBuffer = instancedArray(new Uint32Array(numPoints), 'uint');
 
 				// Compute shader: point in triangle test
 				const pointInTriangleKernel = Fn(() => {

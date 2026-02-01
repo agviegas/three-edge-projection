@@ -16,10 +16,6 @@ const params = {
 		const randomQuaternion = new THREE.Quaternion();
 		randomQuaternion.random();
 
-		projectedMeshes.quaternion.copy(randomQuaternion);
-		projectedMeshes.position.set(0, 0, 0);
-		projectedMeshes.updateMatrixWorld(true);
-
 		allMeshes.quaternion.copy(randomQuaternion);
 		allMeshes.position.set(0, 0, 0);
 		allMeshes.updateMatrixWorld(true);

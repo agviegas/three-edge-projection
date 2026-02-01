@@ -140,7 +140,7 @@
 	<h2>The Code</h2>
 	<pre><code><span class="keyword">const</span> classify = <span class="function">Fn</span>(() => {
     <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
-    <span class="keyword">const</span> result = <span class="function">float</span>(<span class="number">0</span>).<span class="function">toVar</span>();  <span class="comment">// Create mutable variable</span>
+    <span class="keyword">const</span> result = <span class="function">float</span>(<span class="number">0</span>);  <span class="comment">// Initial value</span>
 
     <span class="function">If</span>(value.<span class="function">lessThan</span>(<span class="number">0</span>), () => {
         result.<span class="function">assign</span>(<span class="number">-1</span>);
@@ -152,17 +152,20 @@
     outputBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(result);
 })().<span class="function">compute</span>(N);</code></pre>
 
-	<h2>Important: toVar()</h2>
+	<h2>Optional: toVar()</h2>
 	<p>
-		In TSL, values are <strong>immutable by default</strong>. To create a variable you can modify,
-		use <code>.toVar()</code>:
+		The <code>.toVar()</code> function is optional in most cases. TSL handles assignment automatically.
+		Use <code>.toVar('name')</code> when you want to give a variable a specific name in the generated shader:
 	</p>
-	<pre><code><span class="comment">// This creates an immutable value (can't assign to it later)</span>
+	<pre><code><span class="comment">// Both of these work for assignment:</span>
 <span class="keyword">const</span> x = <span class="function">float</span>(<span class="number">5</span>);
-
-<span class="comment">// This creates a mutable variable (can use .assign())</span>
 <span class="keyword">const</span> y = <span class="function">float</span>(<span class="number">5</span>).<span class="function">toVar</span>();
-y.<span class="function">assign</span>(<span class="number">10</span>);  <span class="comment">// OK!</span></code></pre>
+
+x.<span class="function">assign</span>(<span class="number">10</span>);  <span class="comment">// Works!</span>
+y.<span class="function">assign</span>(<span class="number">10</span>);  <span class="comment">// Also works!</span>
+
+<span class="comment">// Use toVar('name') for debugging (names the variable in the shader)</span>
+<span class="keyword">const</span> depth = <span class="function">sampleDepth</span>(uv).<span class="function">toVar</span>(<span class="string">'depth'</span>);</code></pre>
 
 	<script type="importmap">
 	{
@@ -202,7 +205,7 @@ y.<span class="function">assign</span>(<span class="number">10</span>);  <span c
 					const value = inputBuffer.element(instanceIndex);
 
 					// Create a mutable result variable
-					const result = float(0).toVar();
+					const result = float(0);
 
 					If(value.lessThan(0), () => {
 						result.assign(-1);

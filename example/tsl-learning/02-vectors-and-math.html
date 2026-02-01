@@ -156,17 +156,17 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 	<div id="output">Click "Run Example" to see the result...</div>
 
 	<h2>The Code</h2>
-	<pre><code><span class="comment">// Input: 4 points as vec3 (x, y, z, padding) - vec4 for alignment</span>
+	<pre><code><span class="comment">// Input: 4 points as vec3 (x, y, z)</span>
 <span class="keyword">const</span> points = [
-    <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: (1, 0, 0)</span>
-    <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 1: (0, 2, 0)</span>
-    <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 2: (3, 4, 0) - distance should be 5</span>
-    <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>, <span class="number">0</span>,   <span class="comment">// Point 3: (1, 1, 1) - distance should be √3 ≈ 1.73</span>
+    <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: (1, 0, 0)</span>
+    <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>,   <span class="comment">// Point 1: (0, 2, 0)</span>
+    <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>,   <span class="comment">// Point 2: (3, 4, 0) - distance should be 5</span>
+    <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>,   <span class="comment">// Point 3: (1, 1, 1) - distance should be √3 ≈ 1.73</span>
 ];
 
 <span class="keyword">const</span> computeDistances = <span class="function">Fn</span>(() => {
-    <span class="comment">// Read point as vec3 (ignore the padding)</span>
-    <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex).xyz;
+    <span class="comment">// Read point as vec3</span>
+    <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex);
 
     <span class="comment">// Compute distance to origin</span>
     <span class="keyword">const</span> dist = point.<span class="function">length</span>();
@@ -198,20 +198,19 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 				await renderer.init();
 				output.innerHTML = '<span class="success">✓ WebGPU ready</span>\n';
 
-				// Input: 4 points as vec4 (x, y, z, padding)
-				// We use vec4 because GPU memory alignment prefers it
+				// Input: 4 points as vec3 (x, y, z)
 				const pointsData = new Float32Array([
-					1, 0, 0, 0,   // Point 0: (1, 0, 0)
-					0, 2, 0, 0,   // Point 1: (0, 2, 0)
-					3, 4, 0, 0,   // Point 2: (3, 4, 0)
-					1, 1, 1, 0,   // Point 3: (1, 1, 1)
+					1, 0, 0,   // Point 0: (1, 0, 0)
+					0, 2, 0,   // Point 1: (0, 2, 0)
+					3, 4, 0,   // Point 2: (3, 4, 0)
+					1, 1, 1,   // Point 3: (1, 1, 1)
 				]);
 
 				output.innerHTML += '\nInput points:\n';
 				for (let i = 0; i < 4; i++) {
-					const x = pointsData[i * 4];
-					const y = pointsData[i * 4 + 1];
-					const z = pointsData[i * 4 + 2];
+					const x = pointsData[i * 3];
+					const y = pointsData[i * 3 + 1];
+					const z = pointsData[i * 3 + 2];
 					output.innerHTML += `  Point ${i}: (${x}, ${y}, ${z})\n`;
 				}
 
@@ -219,13 +218,13 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 				const distancesData = new Float32Array(4);
 
 				// Create GPU buffers
-				const pointsBuffer = instancedArray(pointsData, 'vec4');
+				const pointsBuffer = instancedArray(pointsData, 'vec3');
 				const distancesBuffer = instancedArray(distancesData, 'float').setPBO(true);
 
 				// Compute shader
 				const computeDistances = Fn(() => {
-					// Read point (just xyz, ignore w padding)
-					const point = pointsBuffer.element(instanceIndex).xyz;
+					// Read point as vec3
+					const point = pointsBuffer.element(instanceIndex);
 
 					// Compute distance to origin using .length()
 					const dist = point.length();
@@ -243,9 +242,9 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 
 				output.innerHTML += '\nComputed distances to origin:\n';
 				for (let i = 0; i < 4; i++) {
-					const x = pointsData[i * 4];
-					const y = pointsData[i * 4 + 1];
-					const z = pointsData[i * 4 + 2];
+					const x = pointsData[i * 3];
+					const y = pointsData[i * 3 + 1];
+					const z = pointsData[i * 3 + 2];
 					const expected = Math.sqrt(x*x + y*y + z*z);
 					output.innerHTML += `  Point ${i}: distance = ${distances[i].toFixed(4)} (expected: ${expected.toFixed(4)})\n`;
 				}

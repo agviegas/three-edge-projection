@@ -64,7 +64,7 @@
 		it processes arbitrary data. Think of it like a massively parallel for-loop.
 	</p>
 	<pre><code><span class="comment">// CPU (sequential):</span>
-<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < <span class="number">1000</span>; i++) {
+<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">1000</span>; i++) {
     data[i] = data[i] * <span class="number">2</span>;
 }
 
@@ -91,7 +91,7 @@
 <span class="keyword">const</span> computeShader = <span class="function">Fn</span>(() => {
     <span class="comment">// Each thread reads its element, doubles it, writes it back</span>
     <span class="keyword">const</span> value = buffer.<span class="function">element</span>(instanceIndex);
-    buffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(value.<span class="function">mul</span>(<span class="number">2</span>));
+    value.<span class="function">assign</span>(value.<span class="function">mul</span>(<span class="number">2</span>));
 })().<span class="function">compute</span>(<span class="number">5</span>);  <span class="comment">// Run 5 times (once per element)</span>
 
 <span class="comment">// 4. Execute on GPU</span>
@@ -161,7 +161,7 @@
 					// Multiply by 2 and write back
 					// .assign() is like = in regular code
 					// .mul() is like * in regular code
-					buffer.element(instanceIndex).assign(value.mul(2));
+					value.assign(value.mul(2));
 				})().compute(5);  // Run 5 threads (one per element)
 
 				output.innerHTML += '\n\nRunning compute shader...';

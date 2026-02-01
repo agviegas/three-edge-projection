@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title>03: Intersection Edges - Where Objects Meet</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			max-width: 900px;
+			margin: 40px auto;
+			padding: 20px;
+			background: #1a1a2e;
+			color: #eee;
+			line-height: 1.6;
+		}
+		h1 { color: #4fc3f7; }
+		h2 { color: #81c784; margin-top: 40px; }
+		h3 { color: #fff; margin-top: 30px; }
+		a { color: #4fc3f7; }
+		pre {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			overflow-x: auto;
+			border: 1px solid #333;
+		}
+		code { color: #fff; font-family: 'Consolas', monospace; }
+		.inline-code {
+			background: #0d0d1a;
+			padding: 2px 6px;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.comment { color: #6a9955; }
+		.keyword { color: #569cd6; }
+		.function { color: #dcdcaa; }
+		.number { color: #b5cea8; }
+		.string { color: #ce9178; }
+		.diagram {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			border: 1px solid #333;
+			margin: 20px 0;
+			font-family: monospace;
+			white-space: pre;
+			line-height: 1.4;
+			overflow-x: auto;
+		}
+		.highlight-box {
+			background: linear-gradient(135deg, #1a2a3a 0%, #0d0d1a 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #4fc3f7;
+			margin: 20px 0;
+		}
+		.highlight-box h4 {
+			margin: 0 0 10px 0;
+			color: #4fc3f7;
+		}
+		.warning-box {
+			background: linear-gradient(135deg, #3a2a1a 0%, #1a0d0d 100%);
+			padding: 20px;
+			border-radius: 8px;
+			border-left: 4px solid #f7a44f;
+			margin: 20px 0;
+		}
+		.warning-box h4 {
+			margin: 0 0 10px 0;
+			color: #f7a44f;
+		}
+		.nav {
+			display: flex;
+			justify-content: space-between;
+			margin-top: 40px;
+			padding-top: 20px;
+			border-top: 1px solid #333;
+		}
+		.nav a {
+			padding: 10px 20px;
+			background: #0d0d1a;
+			border-radius: 6px;
+			text-decoration: none;
+		}
+		.nav a:hover { background: #1a2a3a; }
+		.step {
+			background: #0d0d1a;
+			padding: 20px;
+			border-radius: 8px;
+			margin: 15px 0;
+			border: 1px solid #333;
+		}
+		.step-number {
+			background: #4fc3f7;
+			color: #000;
+			width: 28px;
+			height: 28px;
+			border-radius: 50%;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		.step h4 {
+			display: inline;
+			color: #fff;
+		}
+		.two-column {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 20px;
+			margin: 20px 0;
+		}
+		.column {
+			background: #0d0d1a;
+			padding: 15px;
+			border-radius: 8px;
+			border: 1px solid #333;
+		}
+		.column h4 {
+			margin: 0 0 10px 0;
+			color: #81c784;
+		}
+	</style>
+</head>
+<body>
+	<a href="index.html">← Back to Index</a>
+
+	<h1>03: Intersection Edges - Where Objects Meet</h1>
+
+	<p>
+		When two 3D objects overlap, they create new visible edges where their surfaces intersect.
+		These aren't edges of the original mesh - they're <strong>new lines</strong> that appear
+		where geometry penetrates other geometry.
+	</p>
+
+	<h2>Why We Need Intersection Edges</h2>
+
+	<div class="two-column">
+		<div class="column">
+			<h4>Without Intersection Edges</h4>
+			<div class="diagram" style="font-size: 12px;">
+  ┌─────────────┐
+  │             │
+  │   ┌─────────┼───┐
+  │   │         │   │
+  │   │         │   │
+  └───┼─────────┘   │
+      │             │
+      └─────────────┘
+
+No line where boxes meet!
+The drawing looks incomplete.
+</div>
+		</div>
+		<div class="column">
+			<h4>With Intersection Edges</h4>
+			<div class="diagram" style="font-size: 12px;">
+  ┌─────────────┐
+  │             │
+  │   ┌─────────┼───┐
+  │   │         │   │
+  │   │         │   │
+  └───┼─────────┘   │
+      │             │
+      └─────────────┘
+      ↑
+  Intersection edge shows
+  where boxes penetrate!
+</div>
+		</div>
+	</div>
+
+	<h2>The Challenge</h2>
+
+	<p>
+		Finding intersections between two meshes naively requires checking every triangle against
+		every other triangle - that's O(n²) complexity. For meshes with thousands of triangles,
+		this would be impossibly slow.
+	</p>
+
+	<p>
+		The solution: <strong>BVH (Bounding Volume Hierarchy)</strong> acceleration. Using
+		<span class="inline-code">bvhcast()</span> from the three-mesh-bvh library, we can skip
+		large portions of both meshes that can't possibly intersect.
+	</p>
+
+	<h2>The Algorithm</h2>
+
+	<div class="step">
+		<span class="step-number">1</span>
+		<h4>BVH Cast</h4>
+		<p style="margin-top: 15px;">
+			We use <span class="inline-code">bvhA.bvhcast(bvhB, matrix)</span> to efficiently find
+			all pairs of triangles that might intersect. This traverses both BVH trees simultaneously.
+		</p>
+		<pre><code>bvhA.<span class="function">bvhcast</span>(bvhB, matrixBToA, {
+    <span class="function">intersectsTriangles</span>: (tri1, tri2) => {
+        <span class="comment">// Called only for potentially intersecting pairs!</span>
+        <span class="comment">// The BVH already filtered out most triangles</span>
+    }
+});</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">2</span>
+		<h4>Skip Shared Edges</h4>
+		<p style="margin-top: 15px;">
+			If two triangles share 2 or more vertices, they're adjacent (share an edge).
+			We skip these - they're handled by the normal edge extraction.
+		</p>
+		<pre><code><span class="keyword">function</span> <span class="function">areTrianglesOnEdge</span>(t1, t2) {
+    <span class="keyword">const</span> indices = [<span class="string">'a'</span>, <span class="string">'b'</span>, <span class="string">'c'</span>];
+    <span class="keyword">let</span> sharedVertices = <span class="number">0</span>;
+
+    <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">3</span>; i++) {
+        <span class="keyword">for</span> (<span class="keyword">let</span> j = <span class="number">0</span>; j &lt; <span class="number">3</span>; j++) {
+            <span class="keyword">if</span> (t1[indices[i]].<span class="function">distanceTo</span>(t2[indices[j]]) &lt; <span class="number">1e-10</span>) {
+                sharedVertices++;
+            }
+        }
+    }
+
+    <span class="keyword">return</span> sharedVertices >= <span class="number">2</span>;  <span class="comment">// 2+ shared vertices = shared edge</span>
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">3</span>
+		<h4>Skip Parallel Triangles</h4>
+		<p style="margin-top: 15px;">
+			If two triangles are nearly parallel (normals point in same/opposite direction),
+			they either don't intersect or intersect along an entire edge (coplanar).
+			We skip these cases.
+		</p>
+		<pre><code><span class="comment">// Check if triangles are parallel</span>
+<span class="keyword">if</span> (Math.<span class="function">abs</span>(tri1.plane.normal.<span class="function">dot</span>(tri2.plane.normal)) > <span class="number">1</span> - <span class="number">1e-6</span>) {
+    <span class="keyword">return</span> <span class="keyword">false</span>;  <span class="comment">// Skip - nearly parallel</span>
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">4</span>
+		<h4>Calculate Intersection Line</h4>
+		<p style="margin-top: 15px;">
+			Use Three.js's built-in <span class="inline-code">intersectsTriangle()</span> to find
+			the actual intersection line between two triangles.
+		</p>
+		<pre><code><span class="keyword">const</span> line = <span class="keyword">new</span> Line3();
+
+<span class="keyword">if</span> (tri1.<span class="function">intersectsTriangle</span>(tri2, line, <span class="keyword">true</span>)) {
+    <span class="comment">// line.start and line.end now contain the intersection</span>
+    <span class="comment">// The 'true' parameter means "compute the line"</span>
+}</code></pre>
+	</div>
+
+	<div class="step">
+		<span class="step-number">5</span>
+		<h4>Filter Edge-Aligned Intersections</h4>
+		<p style="margin-top: 15px;">
+			If the intersection line lies exactly along an edge of either triangle, skip it.
+			These are handled by normal edge detection.
+		</p>
+		<pre><code><span class="keyword">if</span> (
+    tri1.<span class="function">intersectsTriangle</span>(tri2, line, <span class="keyword">true</span>) &&
+    !<span class="function">isLineTriangleEdge</span>(tri1, line) &&  <span class="comment">// Not on tri1's edge</span>
+    !<span class="function">isLineTriangleEdge</span>(tri2, line)    <span class="comment">// Not on tri2's edge</span>
+) {
+    target.<span class="function">push</span>(line.<span class="function">clone</span>());
+}</code></pre>
+	</div>
+
+	<h2>Visual Explanation</h2>
+
+	<div class="diagram">
+Two Non-Adjacent Triangles Intersecting:
+
+Triangle 1 (horizontal):               Triangle 2 (vertical):
+                                            C
+    A ─────────── B                        /|\
+     \           /                        / | \
+      \         /                        /  |  \
+       \       /                        /   |   \
+        \     /                        D────┼────E
+         \   /                              |
+          \ /                          Intersection
+           C                                ↓
+
+When these triangles penetrate each other:
+
+Side View:
+          ╱╲
+         ╱  ╲ (Triangle 2)
+────────╱────╲──────────  (Triangle 1)
+       ╱      ╲
+              ↑
+        Intersection Line!
+
+Result: A Line3 from the entry point to the exit point.
+</div>
+
+	<h2>Handling Multiple Meshes</h2>
+
+	<p>
+		The EdgeGenerator checks intersections between all pairs of meshes in a scene:
+	</p>
+
+	<pre><code><span class="comment">// For N meshes, check all pairs</span>
+<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; meshes.length; i++) {
+    <span class="keyword">for</span> (<span class="keyword">let</span> j = i; j &lt; meshes.length; j++) {  <span class="comment">// j = i to include self-intersection</span>
+        <span class="keyword">const</span> meshA = meshes[i];
+        <span class="keyword">const</span> meshB = meshes[j];
+
+        <span class="comment">// Transform B's coordinates into A's local space</span>
+        _BtoA.<span class="function">copy</span>(meshA.matrixWorld).<span class="function">invert</span>().<span class="function">multiply</span>(meshB.matrixWorld);
+
+        <span class="comment">// Find intersections</span>
+        <span class="function">generateIntersectionEdges</span>(bvhA, bvhB, _BtoA, results);
+
+        <span class="comment">// Transform results back to world space</span>
+        <span class="function">transformEdges</span>(results, meshA.matrixWorld);
+    }
+}</code></pre>
+
+	<div class="highlight-box">
+		<h4>Self-Intersection</h4>
+		<p>
+			Notice that <span class="inline-code">j = i</span> (not <span class="inline-code">j = i + 1</span>).
+			This means we also check each mesh against itself. This catches cases where a single mesh
+			has triangles that penetrate other parts of itself (non-manifold or overlapping geometry).
+		</p>
+	</div>
+
+	<h2>The Complete Flow</h2>
+
+	<div class="diagram">
+┌─────────────────────────────────────────────────────────────────┐
+│               generateIntersectionEdges()                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  INPUT: Two BVHs (bvhA, bvhB) + transformation matrix           │
+│                                                                  │
+│  bvhA.bvhcast(bvhB, matrix):                                    │
+│    │                                                             │
+│    └─► for each potentially-intersecting triangle pair:         │
+│          │                                                       │
+│          ├─► Skip if triangles share an edge (2+ vertices)      │
+│          │                                                       │
+│          ├─► Update triangle planes if needed                   │
+│          │                                                       │
+│          ├─► Skip if triangles are nearly parallel              │
+│          │                                                       │
+│          ├─► Calculate intersection line                        │
+│          │                                                       │
+│          ├─► Skip if line lies on triangle edge                 │
+│          │                                                       │
+│          └─► ADD intersection Line3 to output                   │
+│                                                                  │
+│  OUTPUT: Array of Line3 (intersection edges)                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+</div>
+
+	<div class="warning-box">
+		<h4>Performance Consideration</h4>
+		<p>
+			Intersection edge detection can be expensive for complex scenes with many overlapping
+			objects. If your scene doesn't have intersecting geometry, you can disable this feature:
+		</p>
+		<pre><code>generator.includeIntersectionEdges = <span class="keyword">false</span>;</code></pre>
+	</div>
+
+	<div class="highlight-box">
+		<h4>File Reference</h4>
+		<p>
+			The code for this algorithm is in:<br>
+			<span class="inline-code">src/utils/generateIntersectionEdges.js</span>
+		</p>
+		<p>
+			Helper function for edge detection:<br>
+			<span class="inline-code">src/utils/triangleLineUtils.js</span>
+		</p>
+	</div>
+
+	<div class="nav">
+		<a href="02-edge-extraction.html">← Previous: Edge Extraction</a>
+		<a href="04-occlusion-clipping.html">Next: Occlusion & Clipping →</a>
+	</div>
+
+</body>
+</html>

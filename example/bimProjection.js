@@ -8,7 +8,7 @@ import {Logger} from '../src/utils/Logger.js';
 
 const params = {
 	displayModel: true,
-	logging: false,
+	logging: true,
 	displayDrawThroughProjection: false,
 	includeIntersectionEdges: false,
 	rotate: () => {
@@ -34,6 +34,7 @@ let gui;
 let projectedMeshes, projection, drawThroughProjection;
 let outputContainer;
 let task = null;
+Logger.enabled = params.logging;
 
 
 const components = new OBC.Components();

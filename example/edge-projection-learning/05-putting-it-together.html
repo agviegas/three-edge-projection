@@ -239,54 +239,54 @@ generator.iterationTime = <span class="number">30</span>;              <span cla
 
 	<div class="diagram">
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ProjectionGenerator.generate()                │
+│                    ProjectionGenerator.generate()               │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
+│                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ OPTIONAL: VisibilityCuller                               │    │
-│  │ GPU-render scene, identify visible meshes only           │    │
+│  │ OPTIONAL: VisibilityCuller                              │    │
+│  │ GPU-render scene, identify visible meshes only          │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 1: Generate Candidate Edges                         │    │
-│  │ EdgeGenerator.getEdgesGenerator()                        │    │
-│  │ → Extract hard edges (angle threshold)                   │    │
-│  │ → Extract silhouette edges (projection direction)        │    │
-│  │ → Handle boundary edges                                  │    │
+│  │ Step 1: Generate Candidate Edges                        │    │
+│  │ EdgeGenerator.getEdgesGenerator()                       │    │
+│  │ → Extract hard edges (angle threshold)                  │    │
+│  │ → Extract silhouette edges (projection direction)       │    │
+│  │ → Handle boundary edges                                 │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 2: Pre-filter Edges                                 │    │
-│  │ → Remove edges that project to points/degenerate lines   │    │
-│  │ → (Edges parallel to projection direction)               │    │
-│  │ → OPTIONAL: Generate intersection edges if enabled       │    │
+│  │ Step 2: Pre-filter Edges                                │    │
+│  │ → Remove edges that project to points/degenerate lines  │    │
+│  │ → (Edges parallel to projection direction)              │    │
+│  │ → OPTIONAL: Generate intersection edges if enabled      │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 3: Build Line BVH                                   │    │
-│  │ → Create LineObjectsBVH from all edges                   │    │
-│  │ → Build MeshBVH for each mesh (cached)                   │    │
+│  │ Step 3: Build Line BVH                                  │    │
+│  │ → Create LineObjectsBVH from all edges                  │    │
+│  │ → Build MeshBVH for each mesh (cached)                  │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 4: BVHcast Overlaps                                 │    │
-│  │ ProjectedEdgeCollector.addEdgesGenerator()               │    │
-│  │ → For each mesh: bvhcastEdges() to find occlusions       │    │
-│  │ → Store hidden ranges in hiddenOverlapMap                │    │
+│  │ Step 4: BVHcast Overlaps                                │    │
+│  │ ProjectedEdgeCollector.addEdgesGenerator()              │    │
+│  │ → For each mesh: bvhcastEdges() to find occlusions      │    │
+│  │ → Store hidden ranges in hiddenOverlapMap               │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 5: Convert Overlaps to Lines                        │    │
-│  │ → For each edge: overlapsToLines() → visible segments    │    │
-│  │ → For each edge: overlapsToLines() → hidden segments     │    │
+│  │ Step 5: Convert Overlaps to Lines                       │    │
+│  │ → For each edge: overlapsToLines() → visible segments   │    │
+│  │ → For each edge: overlapsToLines() → hidden segments    │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
+│                              ↓                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ OUTPUT: collector with                                   │    │
+│  │ OUTPUT: collector with                                  │    │
 │  │   - getVisibleLineGeometry() → BufferGeometry           │    │
 │  │   - getHiddenLineGeometry() → BufferGeometry            │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 </div>
 

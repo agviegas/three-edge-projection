@@ -156,36 +156,39 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 	<div id="output">Click "Run Example" to see the result...</div>
 
 	<h2>The Code</h2>
-	<pre><code><span class="comment">// 1. Input data: 4 points as vec3 (x, y, z)</span>
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Input: 4 points as vec3 (x, y, z)</span>
 <span class="keyword">const</span> pointsData = <span class="keyword">new</span> Float32Array([
-    <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: (1, 0, 0)</span>
-    <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>,   <span class="comment">// Point 1: (0, 2, 0)</span>
-    <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>,   <span class="comment">// Point 2: (3, 4, 0) - distance should be 5</span>
-    <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>,   <span class="comment">// Point 3: (1, 1, 1) - distance should be √3 ≈ 1.73</span>
+    <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>,   <span class="comment">// Point 0: distance = 1</span>
+    <span class="number">0</span>, <span class="number">2</span>, <span class="number">0</span>,   <span class="comment">// Point 1: distance = 2</span>
+    <span class="number">3</span>, <span class="number">4</span>, <span class="number">0</span>,   <span class="comment">// Point 2: distance = 5</span>
+    <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>,   <span class="comment">// Point 3: distance = √3 ≈ 1.73</span>
 ]);
-
-<span class="comment">// 2. Output data: one float per point</span>
-<span class="keyword">const</span> distancesData = <span class="keyword">new</span> Float32Array(<span class="number">4</span>);
-
-<span class="comment">// 3. Create GPU buffers</span>
 <span class="keyword">const</span> pointsBuffer = <span class="function">instancedArray</span>(pointsData, <span class="string">'vec3'</span>);
-<span class="keyword">const</span> distancesBuffer = <span class="function">instancedArray</span>(distancesData, <span class="string">'float'</span>);
 
-<span class="comment">// 4. Define compute shader</span>
+<span class="comment">// Output: one float per point</span>
+<span class="keyword">const</span> distancesBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Float32Array(<span class="number">4</span>), <span class="string">'float'</span>);
+
+<span class="comment">// Compute distance from each point to origin</span>
 <span class="keyword">const</span> computeDistances = <span class="function">Fn</span>(() => {
-    <span class="comment">// Read point as vec3</span>
     <span class="keyword">const</span> point = pointsBuffer.<span class="function">element</span>(instanceIndex);
-
-    <span class="comment">// Compute distance to origin</span>
     <span class="keyword">const</span> dist = point.<span class="function">length</span>();
-
-    <span class="comment">// Store result</span>
     distancesBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(dist);
 })().<span class="function">compute</span>(<span class="number">4</span>);
 
-<span class="comment">// 5. Execute and read results</span>
+<span class="comment">// Execute</span>
 <span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(computeDistances);
-<span class="keyword">const</span> result = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(distancesBuffer.value);</code></pre>
+
+<span class="comment">// Read results</span>
+<span class="keyword">const</span> resultBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(distancesBuffer.value);
+<span class="keyword">const</span> distances = <span class="keyword">new</span> Float32Array(resultBuffer);
+console.<span class="function">log</span>(distances); <span class="comment">// [1, 2, 5, 1.732...]</span></code></pre>
 
 	<script type="importmap">
 	{
@@ -231,7 +234,7 @@ v1.xxx  <span class="comment">// → vec3(1, 1, 1)</span></code></pre>
 
 				// Create GPU buffers
 				const pointsBuffer = instancedArray(pointsData, 'vec3');
-				const distancesBuffer = instancedArray(distancesData, 'float').setPBO(true);
+				const distancesBuffer = instancedArray(distancesData, 'float');
 
 				// Compute shader
 				const computeDistances = Fn(() => {

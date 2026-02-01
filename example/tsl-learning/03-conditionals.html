@@ -138,19 +138,42 @@
 	<div id="output">Click "Run Example" to see the result...</div>
 
 	<h2>The Code</h2>
-	<pre><code><span class="keyword">const</span> classify = <span class="function">Fn</span>(() => {
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, If, instancedArray, instanceIndex, float } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
+
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Input data</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([-<span class="number">5</span>, -<span class="number">0.5</span>, <span class="number">0</span>, <span class="number">0.5</span>, <span class="number">5</span>, -<span class="number">100</span>, <span class="number">100</span>]);
+<span class="keyword">const</span> inputBuffer = <span class="function">instancedArray</span>(inputData, <span class="string">'float'</span>);
+
+<span class="comment">// Output buffer</span>
+<span class="keyword">const</span> outputBuffer = <span class="function">instancedArray</span>(<span class="keyword">new</span> Float32Array(inputData.length), <span class="string">'float'</span>);
+
+<span class="comment">// Classify: negative → -1, zero → 0, positive → 1</span>
+<span class="keyword">const</span> classifyKernel = <span class="function">Fn</span>(() => {
     <span class="keyword">const</span> value = inputBuffer.<span class="function">element</span>(instanceIndex);
-    <span class="keyword">const</span> result = <span class="function">float</span>(<span class="number">0</span>);  <span class="comment">// Initial value</span>
+    <span class="keyword">const</span> result = <span class="function">float</span>(<span class="number">0</span>);
 
     <span class="function">If</span>(value.<span class="function">lessThan</span>(<span class="number">0</span>), () => {
-        result.<span class="function">assign</span>(<span class="number">-1</span>);
+        result.<span class="function">assign</span>(-<span class="number">1</span>);
     }).<span class="function">ElseIf</span>(value.<span class="function">greaterThan</span>(<span class="number">0</span>), () => {
         result.<span class="function">assign</span>(<span class="number">1</span>);
     });
     <span class="comment">// If value === 0, result stays 0</span>
 
     outputBuffer.<span class="function">element</span>(instanceIndex).<span class="function">assign</span>(result);
-})().<span class="function">compute</span>(N);</code></pre>
+})().<span class="function">compute</span>(inputData.length);
+
+<span class="comment">// Execute</span>
+<span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(classifyKernel);
+
+<span class="comment">// Read results</span>
+<span class="keyword">const</span> gpuBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(outputBuffer.value);
+<span class="keyword">const</span> results = <span class="keyword">new</span> Float32Array(gpuBuffer);
+console.<span class="function">log</span>(results); <span class="comment">// [-1, -1, 0, 1, 1, -1, 1]</span></code></pre>
 
 	<h2>Optional: toVar()</h2>
 	<p>
@@ -198,7 +221,7 @@ y.<span class="function">assign</span>(<span class="number">10</span>);  <span c
 
 				// Create buffers
 				const inputBuffer = instancedArray(inputData, 'float');
-				const outputBuffer = instancedArray(outputData, 'float').setPBO(true);
+				const outputBuffer = instancedArray(outputData, 'float');
 
 				// Compute shader: classify as -1, 0, or 1
 				const classify = Fn(() => {

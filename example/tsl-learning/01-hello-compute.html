@@ -99,24 +99,30 @@
 	</p>
 
 	<h2>The Code</h2>
-	<pre><code><span class="comment">// 1. Create input data</span>
-<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>]);
+	<pre><code><span class="keyword">import</span> * <span class="keyword">as</span> THREE <span class="keyword">from</span> <span class="string">'three/webgpu'</span>;
+<span class="keyword">import</span> { Fn, instancedArray, instanceIndex } <span class="keyword">from</span> <span class="string">'three/tsl'</span>;
 
-<span class="comment">// 2. Upload to GPU buffer</span>
+<span class="comment">// Initialize WebGPU</span>
+<span class="keyword">const</span> renderer = <span class="keyword">new</span> THREE.WebGPURenderer();
+<span class="keyword">await</span> renderer.<span class="function">init</span>();
+
+<span class="comment">// Create input data and upload to GPU</span>
+<span class="keyword">const</span> inputData = <span class="keyword">new</span> Float32Array([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>]);
 <span class="keyword">const</span> buffer = <span class="function">instancedArray</span>(inputData, <span class="string">'float'</span>);
 
-<span class="comment">// 3. Define compute shader</span>
+<span class="comment">// Define compute shader: double each element</span>
 <span class="keyword">const</span> computeShader = <span class="function">Fn</span>(() => {
-    <span class="comment">// Each thread reads its element, doubles it, writes it back</span>
     <span class="keyword">const</span> value = buffer.<span class="function">element</span>(instanceIndex);
     value.<span class="function">assign</span>(value.<span class="function">mul</span>(<span class="number">2</span>));
-})().<span class="function">compute</span>(<span class="number">5</span>);  <span class="comment">// Request 5 invocations (1 workgroup of 64 threads runs)</span>
+})().<span class="function">compute</span>(inputData.length);
 
-<span class="comment">// 4. Execute on GPU</span>
+<span class="comment">// Execute on GPU</span>
 <span class="keyword">await</span> renderer.<span class="function">computeAsync</span>(computeShader);
 
-<span class="comment">// 5. Read results back to CPU</span>
-<span class="keyword">const</span> result = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(buffer.value);</code></pre>
+<span class="comment">// Read results back to JavaScript</span>
+<span class="keyword">const</span> resultBuffer = <span class="keyword">await</span> renderer.<span class="function">getArrayBufferAsync</span>(buffer.value);
+<span class="keyword">const</span> result = <span class="keyword">new</span> Float32Array(resultBuffer);
+console.<span class="function">log</span>(result); <span class="comment">// [2, 4, 6, 8, 10]</span></code></pre>
 
 	<button onclick="runExample()">Run Example</button>
 
@@ -168,7 +174,7 @@
 				// 2. Upload to GPU buffer
 				// instancedArray creates a storage buffer on the GPU
 				// 'float' means each element is a single float
-				const buffer = instancedArray(inputData, 'float').setPBO(true);
+				const buffer = instancedArray(inputData, 'float');
 
 				// 3. Define the compute shader
 				const computeShader = Fn(() => {

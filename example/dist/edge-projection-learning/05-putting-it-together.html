@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title>05: Putting It All Together</title>
+	<title>05: Converting Overlaps to Lines</title>
 	<meta charset="utf-8">
 	<style>
 		body {
@@ -111,11 +111,12 @@
 <body>
 	<a href="index.html">← Back to Index</a>
 
-	<h1>05: Putting It All Together</h1>
+	<h1>05: Converting Overlaps to Lines</h1>
 
 	<p>
 		Now let's see how the <span class="inline-code">ProjectionGenerator</span> orchestrates
-		all the pieces we've learned about into a cohesive pipeline.
+		all the pieces we've learned about into a cohesive pipeline, and how overlaps are converted
+		into the final visible and hidden line geometry.
 	</p>
 
 	<h2>The Main Classes</h2>
@@ -184,19 +185,19 @@ generator.iterationTime = <span class="number">30</span>;              <span cla
 
 	<pre><code><span class="comment">// The generate() function is a generator</span>
 *<span class="function">generate</span>(scene, options) {
-    <span class="comment">// Step 1: Extract edges</span>
+    <span class="comment">// Step 1: Generate candidate edges</span>
     <span class="keyword">yield</span>* edgeGenerator.<span class="function">getEdgesGenerator</span>(scene, edges);
 
-    <span class="comment">// Step 2: Extract intersection edges (optional)</span>
+    <span class="comment">// Step 2: Generate intersection edges (optional)</span>
     <span class="keyword">if</span> (includeIntersectionEdges) {
         <span class="keyword">yield</span>* edgeGenerator.<span class="function">getIntersectionEdgesGenerator</span>(scene, edges);
     }
 
-    <span class="comment">// Step 3: Filter degenerate edges</span>
+    <span class="comment">// Step 3: Pre-filter degenerate edges</span>
     edges = edges.<span class="function">filter</span>(e => !<span class="function">isYProjectedLineDegenerate</span>(e));
     <span class="keyword">yield</span>;
 
-    <span class="comment">// Step 4: Clip edges against all meshes</span>
+    <span class="comment">// Steps 4-5: Build BVH, compute overlaps, convert to lines</span>
     <span class="keyword">yield</span>* collector.<span class="function">addEdgesGenerator</span>(edges);
 
     <span class="keyword">return</span> collector;
@@ -247,45 +248,37 @@ generator.iterationTime = <span class="number">30</span>;              <span cla
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ↓                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 1: EdgeGenerator.getEdgesGenerator()                │    │
+│  │ Step 1: Generate Candidate Edges                         │    │
+│  │ EdgeGenerator.getEdgesGenerator()                        │    │
 │  │ → Extract hard edges (angle threshold)                   │    │
 │  │ → Extract silhouette edges (projection direction)        │    │
 │  │ → Handle boundary edges                                  │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ↓                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 2: EdgeGenerator.getIntersectionEdgesGenerator()    │    │
-│  │ → BVH-cast all meshes against each other                 │    │
-│  │ → Find triangle-triangle intersections                   │    │
-│  │ → Add intersection edges                                 │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                              ↓                                   │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 3: Filter Degenerate Edges                          │    │
+│  │ Step 2: Pre-filter Edges                                 │    │
 │  │ → Remove edges that project to points/degenerate lines   │    │
 │  │ → (Edges parallel to projection direction)               │    │
+│  │ → OPTIONAL: Generate intersection edges if enabled       │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ↓                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Step 4: ProjectedEdgeCollector.addEdgesGenerator()       │    │
-│  │                                                          │    │
-│  │  ┌────────────────────────────────────────────────────┐ │    │
-│  │  │ 4a. Build LineObjectsBVH from edges                 │ │    │
-│  │  └────────────────────────────────────────────────────┘ │    │
-│  │                         ↓                                │    │
-│  │  ┌────────────────────────────────────────────────────┐ │    │
-│  │  │ 4b. For each mesh:                                  │ │    │
-│  │  │   - Build MeshBVH (cached)                         │ │    │
-│  │  │   - bvhcastEdges() to find occlusions              │ │    │
-│  │  │   - Store hidden ranges in hiddenOverlapMap        │ │    │
-│  │  └────────────────────────────────────────────────────┘ │    │
-│  │                         ↓                                │    │
-│  │  ┌────────────────────────────────────────────────────┐ │    │
-│  │  │ 4c. For each edge:                                  │ │    │
-│  │  │   - overlapsToLines() → visible segments           │ │    │
-│  │  │   - overlapsToLines() → hidden segments            │ │    │
-│  │  └────────────────────────────────────────────────────┘ │    │
-│  │                                                          │    │
+│  │ Step 3: Build Line BVH                                   │    │
+│  │ → Create LineObjectsBVH from all edges                   │    │
+│  │ → Build MeshBVH for each mesh (cached)                   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 4: BVHcast Overlaps                                 │    │
+│  │ ProjectedEdgeCollector.addEdgesGenerator()               │    │
+│  │ → For each mesh: bvhcastEdges() to find occlusions       │    │
+│  │ → Store hidden ranges in hiddenOverlapMap                │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ↓                                   │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ Step 5: Convert Overlaps to Lines                        │    │
+│  │ → For each edge: overlapsToLines() → visible segments    │    │
+│  │ → For each edge: overlapsToLines() → hidden segments     │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ↓                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -307,8 +300,8 @@ generator.iterationTime = <span class="number">30</span>;              <span cla
     <span class="function">onProgress</span>: (stage, progress, collector) => {
         console.<span class="function">log</span>(`${stage}: ${(progress * <span class="number">100</span>).<span class="function">toFixed</span>(<span class="number">1</span>)}%`);
 
-        <span class="comment">// During clipping, you can preview partial results:</span>
-        <span class="keyword">if</span> (collector && stage === <span class="string">'Clipping edges'</span>) {
+        <span class="comment">// During BVH processing, you can preview partial results:</span>
+        <span class="keyword">if</span> (collector && stage === <span class="string">'Building BVH & computing overlaps'</span>) {
             previewMesh.geometry = collector.<span class="function">getVisibleLineGeometry</span>();
         }
     }
@@ -345,13 +338,13 @@ cancelButton.<span class="function">addEventListener</span>(<span class="string"
 	<div class="warning-box">
 		<h4>Typical Time Distribution</h4>
 		<div class="diagram" style="margin: 10px 0; padding: 10px;">
-Visibility culling:    ~4%
-Extracting edges:      ~1%
-Filtering edges:       ~0.1%
-Clipping edges:        ~95%  ← THE BOTTLENECK
+Visibility culling:           ~4%
+Generating candidate edges:   ~1%
+Pre-filtering edges:          ~0.1%
+Building BVH & overlaps:      ~95%  ← THE BOTTLENECK
 		</div>
 		<p>
-			The clipping step dominates because it must check every edge against every
+			The BVH and overlap computation dominates because it must check every edge against every
 			potentially-occluding triangle.
 		</p>
 	</div>

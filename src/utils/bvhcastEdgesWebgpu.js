@@ -1,6 +1,6 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min } from 'three/tsl';
+import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min, cross, normalize, dot } from 'three/tsl';
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -261,6 +261,20 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				const v0 = matrix.mul( vec4( localV0, float( 1.0 ) ) ).xyz;
 				const v1 = matrix.mul( vec4( localV1, float( 1.0 ) ) ).xyz;
 				const v2 = matrix.mul( vec4( localV2, float( 1.0 ) ) ).xyz;
+
+				// Calculate triangle normal for back-face culling
+				const edge1 = v1.sub( v0 );
+				const edge2 = v2.sub( v0 );
+				const normal = cross( edge1, edge2 );
+				// normal.y > 0 means triangle faces up (away from camera looking down)
+
+				// Back-face culling: skip triangles that face up (for FrontSide rendering)
+				// TODO: Handle DoubleSide and BackSide materials, and inverted matrices
+				If( normal.y.greaterThan( 0 ), () => {
+
+					Continue();
+
+				} );
 
 				// Calculate triangle Y bounds (for early culling)
 				const highestTriangleY = max( v0.y, max( v1.y, v2.y ) );

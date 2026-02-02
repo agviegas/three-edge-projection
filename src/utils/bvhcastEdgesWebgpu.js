@@ -1,70 +1,206 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, instancedArray, instanceIndex } from 'three/tsl';
+import { float, Fn, If, instancedArray, instanceIndex, uint } from 'three/tsl';
 
-export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, counter, meshIndex ) {
+// Convert edges (Line3[]) to flat Float32Array
+// Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
+export function edgesToFloat32Array( edges ) {
+
+	const data = new Float32Array( edges.length * 6 );
+	for ( let i = 0; i < edges.length; i ++ ) {
+
+		const edge = edges[ i ];
+		data[ i * 6 + 0 ] = edge.start.x;
+		data[ i * 6 + 1 ] = edge.start.y;
+		data[ i * 6 + 2 ] = edge.start.z;
+		data[ i * 6 + 3 ] = edge.end.x;
+		data[ i * 6 + 4 ] = edge.end.y;
+		data[ i * 6 + 5 ] = edge.end.z;
+
+	}
+
+	return data;
+
+}
+
+export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, meshIndex ) {
 
 	edgesBvh.bvhcast( bvh, mesh.matrixWorld, {
 
 		intersectsRanges: ( edgeOffset, edgeCount, meshOffset, meshCount ) => {
 
-			// pairs.push( edgeOffset, edgeCount, meshOffset, meshCount );
-			webgpuData.edgeOffsets[ counter ] = edgeOffset;
-			webgpuData.edgeCounts[ counter ] = edgeCount;
-			webgpuData.meshOffsets[ counter ] = meshOffset;
-			webgpuData.meshCounts[ counter ] = meshCount;
-			webgpuData.meshIndex[ counter ] = meshIndex;
-			counter ++;
+			webgpuData.edgeOffsets[ webgpuData.groupCount ] = edgeOffset;
+			webgpuData.edgeCounts[ webgpuData.groupCount ] = edgeCount;
+			webgpuData.meshOffsets[ webgpuData.groupCount ] = meshOffset;
+			webgpuData.meshCounts[ webgpuData.groupCount ] = meshCount;
+			webgpuData.meshIndex[ webgpuData.groupCount ] = meshIndex;
+			webgpuData.groupCount ++;
 
 		},
 
 	} );
 
-	return counter;
-
 }
+
+// Number of meshes to process in each GPU batch
+// We concatenate mesh data within each batch to stay under WebGPU's 8 storage buffer limit
+const MESHES_PER_BATCH = 64;
 
 export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
 
 	const renderer = new THREEWEBGPU.WebGPURenderer();
 	await renderer.init();
 
-	const meshIndex = instancedArray( webgpuData.meshIndex, 'uint' );
-	const edgeOffsets = instancedArray( webgpuData.edgeOffsets, 'uint' );
-	const edgeCounts = instancedArray( webgpuData.edgeCounts, 'uint' );
-	const meshOffsets = instancedArray( webgpuData.meshOffsets, 'uint' );
-	const meshCounts = instancedArray( webgpuData.meshCounts, 'uint' );
+	// Edges data is shared across all batches
+	const edgesData = instancedArray( edgesToFloat32Array( edgesBvh.lines ), 'float' );
 
-	const meshesPosInstancedArrays = [];
-	const meshesIndicesInstancedArrays = [];
+	console.log( 'Number of meshes:', meshes.length );
+	console.log( 'Group count:', webgpuData.groupCount );
 
-	for ( let i = 0; i < meshes.length; i ++ ) {
+	// Process meshes in batches
+	const numBatches = Math.ceil( meshes.length / MESHES_PER_BATCH );
 
-		meshesPosInstancedArrays.push( instancedArray( meshes[ i ].geometry.attributes.position.array, 'float' ) );
+	for ( let batchIdx = 0; batchIdx < numBatches; batchIdx ++ ) {
+
+		const batchStart = batchIdx * MESHES_PER_BATCH;
+		const batchEnd = Math.min( batchStart + MESHES_PER_BATCH, meshes.length );
+		const batchMeshCount = batchEnd - batchStart;
+
+		console.log( `Processing batch ${batchIdx + 1}/${numBatches} (meshes ${batchStart}-${batchEnd - 1})` );
+
+		// Calculate sizes for concatenated buffers
+		let totalPositions = 0;
+		let totalIndices = 0;
+		const meshVertexStarts = []; // Where each mesh's vertices start in concatenated buffer
+		const meshTriangleStarts = []; // Where each mesh's triangles start in concatenated buffer
+
+		for ( let i = batchStart; i < batchEnd; i ++ ) {
+
+			const geometry = meshes[ i ].geometry;
+			meshVertexStarts.push( totalPositions / 3 ); // Vertex index, not float index
+			meshTriangleStarts.push( totalIndices / 3 ); // Triangle index, not index index
+			totalPositions += geometry.attributes.position.array.length;
+			totalIndices += geometry.index.array.length;
+
+		}
+
+		// Concatenate positions and indices for this batch
+		const batchPositionsArray = new Float32Array( totalPositions );
+		const batchIndicesArray = new Uint32Array( totalIndices );
+
+		let posOffset = 0;
+		let idxOffset = 0;
+		let vertexOffset = 0;
+
+		for ( let i = batchStart; i < batchEnd; i ++ ) {
+
+			const geometry = meshes[ i ].geometry;
+			const srcPositions = geometry.attributes.position.array;
+			const srcIndices = geometry.index.array;
+
+			// Copy positions
+			batchPositionsArray.set( srcPositions, posOffset );
+			posOffset += srcPositions.length;
+
+			// Copy indices, adjusting by vertex offset
+			for ( let j = 0; j < srcIndices.length; j ++ ) {
+
+				batchIndicesArray[ idxOffset + j ] = srcIndices[ j ] + vertexOffset;
+
+			}
+
+			idxOffset += srcIndices.length;
+			vertexOffset += geometry.attributes.position.count;
+
+		}
+
+		// Filter groups that belong to this batch's meshes
+		// Also convert local mesh triangle offset to global batch triangle offset
+		const batchGroups = {
+			edgeOffsets: [],
+			edgeCounts: [],
+			triangleOffsets: [], // Now global within batch (not per-mesh)
+			meshCounts: []
+		};
+
+		for ( let i = 0; i < webgpuData.groupCount; i ++ ) {
+
+			const globalMeshIdx = webgpuData.meshIndex[ i ];
+			if ( globalMeshIdx >= batchStart && globalMeshIdx < batchEnd ) {
+
+				const localMeshIdx = globalMeshIdx - batchStart;
+				const globalTriOffset = meshTriangleStarts[ localMeshIdx ] + webgpuData.meshOffsets[ i ];
+
+				batchGroups.edgeOffsets.push( webgpuData.edgeOffsets[ i ] );
+				batchGroups.edgeCounts.push( webgpuData.edgeCounts[ i ] );
+				batchGroups.triangleOffsets.push( globalTriOffset );
+				batchGroups.meshCounts.push( webgpuData.meshCounts[ i ] );
+
+			}
+
+		}
+
+		if ( batchGroups.edgeOffsets.length === 0 ) {
+
+			console.log( `  Batch ${batchIdx + 1}: no groups, skipping` );
+			continue;
+
+		}
+
+		console.log( `  Batch ${batchIdx + 1}: ${batchGroups.edgeOffsets.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
+
+		// Create instanced arrays - now only 6 storage buffers!
+		// 1. positions (concatenated)
+		// 2. indices (concatenated)
+		// 3. triangleOffsets (per group)
+		// 4. meshCounts (per group)
+		// 5. testOutput
+		// edgesData is shared but only used if we add edge processing
+
+		const batchPositions = instancedArray( batchPositionsArray, 'float' );
+		const batchIndices = instancedArray( batchIndicesArray, 'uint' );
+		const batchTriangleOffsets = instancedArray( new Uint32Array( batchGroups.triangleOffsets ), 'uint' );
+		const batchMeshCounts = instancedArray( new Uint32Array( batchGroups.meshCounts ), 'uint' );
+
+		// Test output for this batch
+		const testOutput = instancedArray( new Float32Array( batchGroups.edgeOffsets.length * 3 ), 'float' );
+
+		// Build compute shader - now with simple dynamic indexing!
+		const computeShader = Fn( () => {
+
+			const groupIdx = instanceIndex;
+			const triOffset = batchTriangleOffsets.element( groupIdx );
+
+			// Read first triangle's first vertex index (global within batch)
+			const idx0 = batchIndices.element( triOffset.mul( 3 ) );
+
+			// Read vertex position (3 floats per vertex)
+			const px = batchPositions.element( idx0.mul( 3 ) );
+			const py = batchPositions.element( idx0.mul( 3 ).add( 1 ) );
+			const pz = batchPositions.element( idx0.mul( 3 ).add( 2 ) );
+
+			// Write to test output
+			testOutput.element( groupIdx.mul( 3 ) ).assign( px );
+			testOutput.element( groupIdx.mul( 3 ).add( 1 ) ).assign( py );
+			testOutput.element( groupIdx.mul( 3 ).add( 2 ) ).assign( pz );
+
+		} )().compute( batchGroups.edgeOffsets.length );
+
+		// Execute on GPU
+		await renderer.computeAsync( computeShader );
+
+		// Read results back
+		const resultBuffer = await renderer.getArrayBufferAsync( testOutput.value );
+		const result = new Float32Array( resultBuffer );
+
+		// Log first few results to verify
+		console.log( `  Test output (first 3 groups):` );
+		for ( let i = 0; i < Math.min( 3, batchGroups.edgeOffsets.length ); i ++ ) {
+
+			console.log( `    Group ${i}: (${result[ i * 3 ]}, ${result[ i * 3 + 1 ]}, ${result[ i * 3 + 2 ]})` );
+
+		}
 
 	}
-
-	for ( let i = 0; i < meshes.length; i ++ ) {
-
-		meshesIndicesInstancedArrays.push( instancedArray( meshes[ i ].geometry.index.array, 'uint' ) );
-
-	}
-
-	// const computeShader = Fn( () => {
-
-
-
-
-	// } )().compute( webgpuData.meshStarts.length ); // Request 5 invocations (dispatches 1 workgroup of 64 threads)
-
-
-	// // 4. Execute on GPU
-	// await renderer.computeAsync( computeShader );
-
-
-	// // 5. Read results back
-	// const resultBuffer = await renderer.getArrayBufferAsync( buffer.value );
-	// const result = new Float32Array( resultBuffer );
-	// console.log( Array.from( result ).join( ', ' ) );
 
 }

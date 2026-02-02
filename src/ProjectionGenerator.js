@@ -142,10 +142,9 @@ class ProjectedEdgeCollector {
 			webgpuData.meshOffsets = new Uint32Array( size );
 			webgpuData.meshCounts = new Uint32Array( size );
 			webgpuData.meshIndex = new Uint32Array( size );
+			webgpuData.groupCount = 0;
 
 		}
-
-		let counter = 0;
 
 		for ( let m = 0; m < meshes.length; m ++ ) {
 
@@ -167,7 +166,7 @@ class ProjectedEdgeCollector {
 			if ( useWebGpu ) {
 
 				// bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
-				counter = getEdgesTrianglesGroups( edgesBvh, bvhs.get( mesh.geometry ), mesh, webgpuData, counter, m );
+				getEdgesTrianglesGroups( edgesBvh, bvhs.get( mesh.geometry ), mesh, webgpuData, m );
 
 			} else {
 

@@ -179,7 +179,19 @@ class ProjectedEdgeCollector {
 
 		if ( useWebGpu ) {
 
-			getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap );
+			// Wait for async WebGPU computation to complete
+			let webgpuFinished = false;
+			getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ).then( () => {
+
+				webgpuFinished = true;
+
+			} );
+
+			while ( ! webgpuFinished ) {
+
+				yield;
+
+			}
 
 		}
 

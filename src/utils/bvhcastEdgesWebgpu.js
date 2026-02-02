@@ -1,6 +1,6 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break } from 'three/tsl';
+import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min } from 'three/tsl';
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -262,6 +262,10 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				const v1 = matrix.mul( vec4( localV1, float( 1.0 ) ) ).xyz;
 				const v2 = matrix.mul( vec4( localV2, float( 1.0 ) ) ).xyz;
 
+				// Calculate triangle Y bounds (for early culling)
+				const highestTriangleY = max( v0.y, max( v1.y, v2.y ) );
+				const lowestTriangleY = min( v0.y, min( v1.y, v2.y ) );
+
 				// Loop over edges in this group
 				Loop( { start: int( 0 ), end: edgeCount.toInt(), type: 'int', condition: '<', name: 'edgeIdx' }, ( { edgeIdx } ) => {
 
@@ -281,8 +285,18 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 						edgesData.element( edgeDataOffset.add( 5 ) )
 					);
 
-					// TODO: Implement culling and overlap computation here
-					// For now, just count pairs
+					// Calculate edge Y bounds
+					const lowestLineY = min( edgeStart.y, edgeEnd.y );
+
+					// Y-bounds culling: skip if triangle is completely below the line
+					// (triangle's highest Y is at or below line's lowest Y)
+					If( highestTriangleY.lessThanEqual( lowestLineY ), () => {
+
+						Continue();
+
+					} );
+
+					// Passed culling - count this pair
 					pairCount.addAssign( 1 );
 
 				} );

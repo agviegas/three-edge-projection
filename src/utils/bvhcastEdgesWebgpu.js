@@ -1,6 +1,8 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min, cross, normalize, dot } from 'three/tsl';
+import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min, cross, normalize, dot, abs, select, mix } from 'three/tsl';
+
+const EPSILON = 1e-10; // Threshold for floating point comparisons
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -302,6 +304,7 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					// Calculate edge Y bounds
 					const lowestLineY = min( edgeStart.y, edgeEnd.y );
+					const highestLineY = max( edgeStart.y, edgeEnd.y );
 
 					// Y-bounds culling: skip if triangle is completely below the line
 					// (triangle's highest Y is at or below line's lowest Y)
@@ -311,7 +314,76 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
-					// Passed culling - count this pair
+					// Fast path: if the entire line is below the triangle's lowest point,
+					// no trimming needed - the whole line is "beneath" the triangle plane
+					const lineFullyBelow = highestLineY.lessThan( lowestTriangleY );
+
+					// Calculate triangle plane (normal already computed, need constant d)
+					// Plane equation: normal · p + d = 0, so d = -normal · v0
+					const planeNormal = normalize( normal );
+					const planeD = planeNormal.dot( v0 ).negate();
+
+					// Ensure plane faces up (for consistent "below" definition)
+					// If normal.y < 0, flip the plane
+					const facingDown = planeNormal.y.lessThan( 0 );
+					const adjustedNormal = select( facingDown, planeNormal.negate(), planeNormal );
+					const adjustedD = select( facingDown, planeD.negate(), planeD );
+
+					// Calculate signed distances from line endpoints to plane
+					// distance = normal · point + d (positive = above, negative = below)
+					const startDist = adjustedNormal.dot( edgeStart ).add( adjustedD );
+					const endDist = adjustedNormal.dot( edgeEnd ).add( adjustedD );
+
+					// Check positions relative to plane
+					const isStartBelow = startDist.lessThan( float( EPSILON ).negate() );
+					const isEndBelow = endDist.lessThan( float( EPSILON ).negate() );
+					const bothAbove = isStartBelow.not().and( isEndBelow.not() );
+					const bothBelow = isStartBelow.and( isEndBelow );
+
+					// Skip if both endpoints are above the plane (or on it)
+					If( bothAbove, () => {
+
+						Continue();
+
+					} );
+
+					// Determine the trimmed line segment (portion below the plane)
+					// If both below OR line fully below triangle's Y-range, use original line
+					// Otherwise, find intersection and clip
+
+					// Calculate intersection parameter t where line crosses plane
+					// t = -startDist / (endDist - startDist)
+					const denominator = endDist.sub( startDist );
+					const t = startDist.negate().div( denominator );
+
+					// Calculate intersection point
+					const intersectionPoint = mix( edgeStart, edgeEnd, t );
+
+					// Determine trimmed line endpoints
+					// If start is below, keep start; otherwise use intersection
+					// If end is below, keep end; otherwise use intersection
+					const trimmedStart = vec3(
+						select( isStartBelow, edgeStart.x, intersectionPoint.x ),
+						select( isStartBelow, edgeStart.y, intersectionPoint.y ),
+						select( isStartBelow, edgeStart.z, intersectionPoint.z )
+					);
+					const trimmedEnd = vec3(
+						select( isEndBelow, edgeEnd.x, intersectionPoint.x ),
+						select( isEndBelow, edgeEnd.y, intersectionPoint.y ),
+						select( isEndBelow, edgeEnd.z, intersectionPoint.z )
+					);
+
+					// Skip if trimmed line is degenerate (too short)
+					const trimmedDelta = trimmedEnd.sub( trimmedStart );
+					const trimmedLengthSq = trimmedDelta.dot( trimmedDelta );
+					If( trimmedLengthSq.lessThan( float( EPSILON ) ), () => {
+
+						Continue();
+
+					} );
+
+					// Passed all culling - count this pair
+					// TODO: Next steps - isLineTriangleEdge and getProjectedLineOverlap
 					pairCount.addAssign( 1 );
 
 				} );

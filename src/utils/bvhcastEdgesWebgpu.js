@@ -59,12 +59,28 @@ const OVERLAP_STRIDE = 3;
 
 // Maximum overlaps per batch (we'll need to estimate this)
 // If exceeded, we'll need to re-run with a larger buffer
-const MAX_OVERLAPS_PER_BATCH = 10000000; // 10M overlaps max per batch
+// Based on testing: batch 1 had ~700K overlaps, so 2M should be safe
+const MAX_OVERLAPS_PER_BATCH = 2000000; // 2M overlaps max per batch
+
+// Reusable renderer instance (initialized once)
+let _renderer = null;
+
+async function getRenderer() {
+
+	if ( _renderer === null ) {
+
+		_renderer = new THREEWEBGPU.WebGPURenderer();
+		await _renderer.init();
+
+	}
+
+	return _renderer;
+
+}
 
 export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
 
-	const renderer = new THREEWEBGPU.WebGPURenderer();
-	await renderer.init();
+	const renderer = await getRenderer();
 
 	// Edges data is shared across all batches
 	const edgesData = instancedArray( edgesToFloat32Array( edgesBvh.lines ), 'float' );
@@ -74,6 +90,11 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 	// Process meshes in batches
 	const numBatches = Math.ceil( meshes.length / MESHES_PER_BATCH );
+
+	// Track timing
+	let gpuTime = 0;
+	let readbackTime = 0;
+	let mergeTime = 0;
 
 	for ( let batchIdx = 0; batchIdx < numBatches; batchIdx ++ ) {
 
@@ -683,9 +704,12 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 		} )().compute( batchGroupsList.length );
 
 		// Execute on GPU
+		const gpuStart = performance.now();
 		await renderer.computeAsync( computeShader );
+		gpuTime += performance.now() - gpuStart;
 
 		// Read back the overlap counter to know how many overlaps were written
+		const readbackStart = performance.now();
 		const counterBuffer = await renderer.getArrayBufferAsync( overlapCounter.value );
 		const overlapCount = new Uint32Array( counterBuffer )[ 0 ];
 
@@ -702,8 +726,10 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 			// Read back the overlap data
 			const overlapBuffer = await renderer.getArrayBufferAsync( overlapOutput.value );
 			const overlaps = new Float32Array( overlapBuffer );
+			readbackTime += performance.now() - readbackStart;
 
 			// Process overlaps into hiddenOverlapMap
+			const mergeStart = performance.now();
 			const actualCount = Math.min( overlapCount, MAX_OVERLAPS_PER_BATCH );
 			for ( let i = 0; i < actualCount; i ++ ) {
 
@@ -717,10 +743,20 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 			}
 
+			mergeTime += performance.now() - mergeStart;
 			console.log( `  Processed ${actualCount} overlaps into hiddenOverlapMap` );
+
+		} else {
+
+			readbackTime += performance.now() - readbackStart;
 
 		}
 
 	}
+
+	console.log( `WebGPU timing breakdown:` );
+	console.log( `  GPU compute: ${gpuTime.toFixed( 1 )}ms` );
+	console.log( `  Readback: ${readbackTime.toFixed( 1 )}ms` );
+	console.log( `  CPU merge: ${mergeTime.toFixed( 1 )}ms` );
 
 }

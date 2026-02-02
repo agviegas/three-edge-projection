@@ -1,6 +1,7 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min, cross, normalize, dot, abs, select, mix } from 'three/tsl';
+import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Continue, max, min, cross, normalize, abs, select, mix, atomicAdd } from 'three/tsl';
+import { insertOverlap } from './getProjectedOverlaps.js';
 
 const EPSILON = 1e-10; // Threshold for floating point comparisons
 const AREA_EPSILON = 1e-16; // Threshold for degenerate triangle detection
@@ -52,6 +53,13 @@ const MESHES_PER_BATCH = 64;
 
 // Group info layout: [edgeOffset, edgeCount, triOffset, triCount, meshIdx] per group
 const GROUP_INFO_STRIDE = 5;
+
+// Overlap output layout: [edgeIndex, overlapStart, overlapEnd] per overlap
+const OVERLAP_STRIDE = 3;
+
+// Maximum overlaps per batch (we'll need to estimate this)
+// If exceeded, we'll need to re-run with a larger buffer
+const MAX_OVERLAPS_PER_BATCH = 10000000; // 10M overlaps max per batch
 
 export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
 
@@ -177,22 +185,27 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		console.log( `  Batch ${batchIdx + 1}: ${batchGroupsList.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
 
-		// Create instanced arrays - 7 storage buffers (1 spare!)
+		// Create instanced arrays - 8 storage buffers (at limit!)
 		// 1. positions (concatenated)
 		// 2. indices (concatenated)
 		// 3. matrices (concatenated, 16 floats per mesh)
 		// 4. groupInfo (packed: edgeOffset, edgeCount, triOffset, triCount, meshIdx)
 		// 5. edgesData (shared across batches)
-		// 6. testOutput
-		// 7. (spare for overlaps output later)
+		// 6. overlapCounter (atomic counter for number of overlaps written)
+		// 7. overlapOutput (edgeIndex, start, end per overlap)
+		// 8. (if needed for debugging)
 
 		const batchPositions = instancedArray( batchPositionsArray, 'float' );
 		const batchIndices = instancedArray( batchIndicesArray, 'uint' );
 		const batchMatrices = instancedArray( batchMatricesArray, 'float' );
 		const batchGroupInfo = instancedArray( batchGroupInfoArray, 'uint' );
 
-		// Test output: count of edge-triangle pairs processed per group (1 uint per group)
-		const testOutput = instancedArray( new Uint32Array( batchGroupsList.length ), 'uint' );
+		// Atomic counter for overlaps (single uint32) - must be marked as atomic for atomicAdd
+		const overlapCounter = instancedArray( new Uint32Array( [ 0 ] ), 'uint' ).toAtomic();
+
+		// Output buffer for overlaps: [edgeIndex, overlapStart, overlapEnd] per overlap
+		// Using floats so we can store both uint (edge index) and float (start/end) data
+		const overlapOutput = instancedArray( new Float32Array( MAX_OVERLAPS_PER_BATCH * OVERLAP_STRIDE ), 'float' );
 
 		// Build compute shader
 		const computeShader = Fn( () => {
@@ -227,9 +240,6 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				batchMatrices.element( matOffset.add( 14 ) ),
 				batchMatrices.element( matOffset.add( 15 ) )
 			);
-
-			// Counter for pairs processed
-			const pairCount = uint( 0 ).toVar();
 
 			// Loop over triangles in this group
 			// Using custom range loop: { start, end, type, condition, name }
@@ -649,47 +659,67 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 					} );
 
 					// Calculate overlap range (normalized 0-1 along original line)
-					const overlapStart = max( s1, s2 ).div( flatLineDist );
-					const overlapEnd = min( e1, e2 ).div( flatLineDist );
+					const overlapStartVal = max( s1, s2 ).div( flatLineDist );
+					const overlapEndVal = min( e1, e2 ).div( flatLineDist );
 
-					// We have a valid overlap! Count it
-					// TODO: Store the overlap range (overlapStart, overlapEnd) for this edge
-					pairCount.addAssign( 1 );
+					// Atomically allocate a slot in the output buffer
+					const overlapIdx = atomicAdd( overlapCounter.element( 0 ), 1 );
+
+					// Only write if we have space (safety check)
+					If( overlapIdx.lessThan( uint( MAX_OVERLAPS_PER_BATCH ) ), () => {
+
+						// Write overlap data: [edgeIndex, start, end]
+						const outOffset = overlapIdx.mul( OVERLAP_STRIDE );
+						overlapOutput.element( outOffset ).assign( globalEdgeIdx.toFloat() );
+						overlapOutput.element( outOffset.add( 1 ) ).assign( overlapStartVal );
+						overlapOutput.element( outOffset.add( 2 ) ).assign( overlapEndVal );
+
+					} );
 
 				} );
 
 			} );
-
-			// Write pair count to output
-			testOutput.element( groupIdx ).assign( pairCount );
 
 		} )().compute( batchGroupsList.length );
 
 		// Execute on GPU
 		await renderer.computeAsync( computeShader );
 
-		// Read results back
-		const resultBuffer = await renderer.getArrayBufferAsync( testOutput.value );
-		const result = new Uint32Array( resultBuffer );
+		// Read back the overlap counter to know how many overlaps were written
+		const counterBuffer = await renderer.getArrayBufferAsync( overlapCounter.value );
+		const overlapCount = new Uint32Array( counterBuffer )[ 0 ];
 
-		// Log first few results and totals
-		let totalPairs = 0;
-		for ( let i = 0; i < batchGroupsList.length; i ++ ) {
+		console.log( `  Batch ${batchIdx + 1}: ${overlapCount} overlaps found` );
 
-			totalPairs += result[ i ];
+		if ( overlapCount > MAX_OVERLAPS_PER_BATCH ) {
 
-		}
-
-		console.log( `  Test output (first 5 groups - pair counts):` );
-		for ( let i = 0; i < Math.min( 5, batchGroupsList.length ); i ++ ) {
-
-			const g = batchGroupsList[ i ];
-			const expected = g.edgeCount * g.triCount;
-			console.log( `    Group ${i}: ${result[ i ]} pairs (expected ${expected} = ${g.edgeCount} edges × ${g.triCount} tris)` );
+			console.warn( `  WARNING: Overlap buffer overflow! ${overlapCount} > ${MAX_OVERLAPS_PER_BATCH}` );
 
 		}
 
-		console.log( `  Total pairs processed: ${totalPairs}` );
+		if ( overlapCount > 0 ) {
+
+			// Read back the overlap data
+			const overlapBuffer = await renderer.getArrayBufferAsync( overlapOutput.value );
+			const overlaps = new Float32Array( overlapBuffer );
+
+			// Process overlaps into hiddenOverlapMap
+			const actualCount = Math.min( overlapCount, MAX_OVERLAPS_PER_BATCH );
+			for ( let i = 0; i < actualCount; i ++ ) {
+
+				const offset = i * OVERLAP_STRIDE;
+				const edgeIndex = Math.round( overlaps[ offset ] ); // Convert float back to int
+				const overlapStart = overlaps[ offset + 1 ];
+				const overlapEnd = overlaps[ offset + 2 ];
+
+				// Insert into the edge's overlap array (handles merging)
+				insertOverlap( [ overlapStart, overlapEnd ], hiddenOverlapMap[ edgeIndex ] );
+
+			}
+
+			console.log( `  Processed ${actualCount} overlaps into hiddenOverlapMap` );
+
+		}
 
 	}
 

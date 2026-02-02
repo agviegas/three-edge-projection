@@ -49,7 +49,9 @@ export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, meshIn
 
 // Number of meshes to process in each GPU batch
 // We concatenate mesh data within each batch to stay under WebGPU's 8 storage buffer limit
-const MESHES_PER_BATCH = 64;
+// Larger batches = fewer readbacks = better performance
+// Using a very large number to process all meshes in a single batch when possible
+const MESHES_PER_BATCH = 10000;
 
 // Group info layout: [edgeOffset, edgeCount, triOffset, triCount, meshIdx] per group
 const GROUP_INFO_STRIDE = 5;
@@ -58,8 +60,8 @@ const GROUP_INFO_STRIDE = 5;
 const OVERLAP_STRIDE = 3;
 
 // Maximum overlaps per batch (we'll need to estimate this)
-// If exceeded, we'll need to re-run with a larger buffer
-// Based on testing: batch 1 had ~700K overlaps, so 2M should be safe
+// If exceeded, overlaps beyond this limit are dropped
+// Based on testing: ~1.5M overlaps total, 2M provides comfortable margin
 const MAX_OVERLAPS_PER_BATCH = 2000000; // 2M overlaps max per batch
 
 // Reusable renderer instance (initialized once)
@@ -95,6 +97,8 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 	let gpuTime = 0;
 	let readbackTime = 0;
 	let mergeTime = 0;
+	let bufferTime = 0;
+	let shaderBuildTime = 0;
 
 	for ( let batchIdx = 0; batchIdx < numBatches; batchIdx ++ ) {
 
@@ -204,7 +208,24 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		}
 
-		console.log( `  Batch ${batchIdx + 1}: ${batchGroupsList.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
+		// Estimate max overlaps for this batch based on total pairs
+		// Empirically, about 0.3% of pairs result in overlaps after all culling
+		let totalPairs = 0;
+		for ( let i = 0; i < batchGroupsList.length; i ++ ) {
+
+			totalPairs += batchGroupsList[ i ].edgeCount * batchGroupsList[ i ].triCount;
+
+		}
+
+		// Use 5% as safety margin, capped at MAX_OVERLAPS_PER_BATCH
+		// (empirically ~0.3% of pairs result in overlaps, but some batches have higher ratios up to ~4.5%)
+		const estimatedOverlaps = Math.min( Math.ceil( totalPairs * 0.05 ), MAX_OVERLAPS_PER_BATCH );
+		// Minimum 10K to avoid tiny buffers
+		const batchOverlapCapacity = Math.max( estimatedOverlaps, 10000 );
+
+		console.log( `  Batch ${batchIdx + 1}: ${batchGroupsList.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles, ${totalPairs} pairs, buffer for ${batchOverlapCapacity} overlaps` );
+
+		const bufferStart = performance.now();
 
 		// Create instanced arrays - 8 storage buffers (at limit!)
 		// 1. positions (concatenated)
@@ -225,10 +246,13 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 		const overlapCounter = instancedArray( new Uint32Array( [ 0 ] ), 'uint' ).toAtomic();
 
 		// Output buffer for overlaps: [edgeIndex, overlapStart, overlapEnd] per overlap
-		// Using floats so we can store both uint (edge index) and float (start/end) data
-		const overlapOutput = instancedArray( new Float32Array( MAX_OVERLAPS_PER_BATCH * OVERLAP_STRIDE ), 'float' );
+		// Size is estimated based on this batch's pair count
+		const overlapOutput = instancedArray( new Float32Array( batchOverlapCapacity * OVERLAP_STRIDE ), 'float' );
+
+		bufferTime += performance.now() - bufferStart;
 
 		// Build compute shader
+		const shaderStart = performance.now();
 		const computeShader = Fn( () => {
 
 			const groupIdx = instanceIndex;
@@ -687,7 +711,7 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 					const overlapIdx = atomicAdd( overlapCounter.element( 0 ), 1 );
 
 					// Only write if we have space (safety check)
-					If( overlapIdx.lessThan( uint( MAX_OVERLAPS_PER_BATCH ) ), () => {
+					If( overlapIdx.lessThan( uint( batchOverlapCapacity ) ), () => {
 
 						// Write overlap data: [edgeIndex, start, end]
 						const outOffset = overlapIdx.mul( OVERLAP_STRIDE );
@@ -703,6 +727,8 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		} )().compute( batchGroupsList.length );
 
+		shaderBuildTime += performance.now() - shaderStart;
+
 		// Execute on GPU
 		const gpuStart = performance.now();
 		await renderer.computeAsync( computeShader );
@@ -715,9 +741,9 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		console.log( `  Batch ${batchIdx + 1}: ${overlapCount} overlaps found` );
 
-		if ( overlapCount > MAX_OVERLAPS_PER_BATCH ) {
+		if ( overlapCount > batchOverlapCapacity ) {
 
-			console.warn( `  WARNING: Overlap buffer overflow! ${overlapCount} > ${MAX_OVERLAPS_PER_BATCH}` );
+			console.warn( `  WARNING: Overlap buffer overflow! ${overlapCount} > ${batchOverlapCapacity}` );
 
 		}
 
@@ -730,11 +756,11 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 			// Process overlaps into hiddenOverlapMap
 			const mergeStart = performance.now();
-			const actualCount = Math.min( overlapCount, MAX_OVERLAPS_PER_BATCH );
+			const actualCount = Math.min( overlapCount, batchOverlapCapacity );
 			for ( let i = 0; i < actualCount; i ++ ) {
 
 				const offset = i * OVERLAP_STRIDE;
-				const edgeIndex = Math.round( overlaps[ offset ] ); // Convert float back to int
+				const edgeIndex = Math.round( overlaps[ offset ] );
 				const overlapStart = overlaps[ offset + 1 ];
 				const overlapEnd = overlaps[ offset + 2 ];
 
@@ -754,7 +780,10 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 	}
 
-	console.log( `WebGPU timing breakdown:` );
+	const totalTime = bufferTime + shaderBuildTime + gpuTime + readbackTime + mergeTime;
+	console.log( `WebGPU timing breakdown (total: ${totalTime.toFixed( 1 )}ms):` );
+	console.log( `  Buffer creation: ${bufferTime.toFixed( 1 )}ms` );
+	console.log( `  Shader build: ${shaderBuildTime.toFixed( 1 )}ms` );
 	console.log( `  GPU compute: ${gpuTime.toFixed( 1 )}ms` );
 	console.log( `  Readback: ${readbackTime.toFixed( 1 )}ms` );
 	console.log( `  CPU merge: ${mergeTime.toFixed( 1 )}ms` );

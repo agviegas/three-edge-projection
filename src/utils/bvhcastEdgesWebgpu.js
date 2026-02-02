@@ -4,6 +4,7 @@ import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, ve
 
 const EPSILON = 1e-10; // Threshold for floating point comparisons
 const AREA_EPSILON = 1e-16; // Threshold for degenerate triangle detection
+const DIST_EPSILON = 1e-16; // Threshold for distance comparisons in overlap calculation
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -417,8 +418,242 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
-					// Passed all culling - count this pair
-					// TODO: Next step - getProjectedLineOverlap
+					// ============================================
+					// getProjectedLineOverlap - project to Y=0 and find overlap
+					// ============================================
+
+					// Flatten triangle and line to Y=0
+					const flatV0 = vec3( v0.x, float( 0 ), v0.z );
+					const flatV1 = vec3( v1.x, float( 0 ), v1.z );
+					const flatV2 = vec3( v2.x, float( 0 ), v2.z );
+					const flatLineStart = vec3( trimmedStart.x, float( 0 ), trimmedStart.z );
+					const flatLineEnd = vec3( trimmedEnd.x, float( 0 ), trimmedEnd.z );
+
+					// Check if flattened triangle is degenerate
+					const flatEdge1 = flatV1.sub( flatV0 );
+					const flatEdge2 = flatV2.sub( flatV0 );
+					const flatNormal = cross( flatEdge1, flatEdge2 );
+					const flatAreaSq = flatNormal.dot( flatNormal );
+					If( flatAreaSq.lessThanEqual( float( 4 * AREA_EPSILON * AREA_EPSILON ) ), () => {
+
+						Continue();
+
+					} );
+
+					// Calculate line direction and length
+					const flatLineDelta = flatLineEnd.sub( flatLineStart );
+					const flatLineDistSq = flatLineDelta.dot( flatLineDelta );
+					If( flatLineDistSq.lessThan( float( EPSILON ) ), () => {
+
+						Continue();
+
+					} );
+					const flatLineDist = flatLineDistSq.sqrt();
+					const lineDir = flatLineDelta.div( flatLineDist );
+
+					// Create orthogonal plane along the line
+					// ortho = lineDir × flatNormal (normalized)
+					// For Y=0 projection, flatNormal is (0, ±area, 0), so cross simplifies
+					const flatNormalNorm = normalize( flatNormal );
+					const ortho = cross( lineDir, flatNormalNorm );
+					// orthoPlane: normal=ortho, passes through flatLineStart
+					// distance to point p = ortho · (p - flatLineStart)
+
+					// Find triangle-plane intersections (up to 2 points)
+					// We'll track intersections using variables
+					const triLineStartX = float( 0 ).toVar();
+					const triLineStartZ = float( 0 ).toVar();
+					const triLineEndX = float( 0 ).toVar();
+					const triLineEndZ = float( 0 ).toVar();
+					const intersectCount = uint( 0 ).toVar();
+
+					// Helper: check edge p1->p2 intersection with ortho plane
+					// Process edge 0: flatV0 -> flatV1
+					const d0_e0 = ortho.dot( flatV0.sub( flatLineStart ) );
+					const d1_e0 = ortho.dot( flatV1.sub( flatLineStart ) );
+					const onPlane0_e0 = abs( d0_e0 ).lessThan( float( DIST_EPSILON ) );
+					const onPlane1_e0 = abs( d1_e0 ).lessThan( float( DIST_EPSILON ) );
+					const crosses_e0 = onPlane0_e0.not().and( onPlane1_e0.not() ).and( d0_e0.mul( d1_e0 ).lessThan( 0 ) );
+
+					// Edge 0 intersection
+					If( crosses_e0, () => {
+
+						const t_e0 = d0_e0.div( d0_e0.sub( d1_e0 ) );
+						const ix = mix( flatV0.x, flatV1.x, t_e0 );
+						const iz = mix( flatV0.z, flatV1.z, t_e0 );
+						If( intersectCount.equal( 0 ), () => {
+
+							triLineStartX.assign( ix );
+							triLineStartZ.assign( iz );
+
+						} ).Else( () => {
+
+							triLineEndX.assign( ix );
+							triLineEndZ.assign( iz );
+
+						} );
+						intersectCount.addAssign( 1 );
+
+					} ).ElseIf( onPlane0_e0, () => {
+
+						If( intersectCount.equal( 0 ), () => {
+
+							triLineStartX.assign( flatV0.x );
+							triLineStartZ.assign( flatV0.z );
+
+						} ).Else( () => {
+
+							triLineEndX.assign( flatV0.x );
+							triLineEndZ.assign( flatV0.z );
+
+						} );
+						intersectCount.addAssign( 1 );
+
+					} );
+
+					// Process edge 1: flatV1 -> flatV2
+					const d0_e1 = d1_e0; // reuse
+					const d1_e1 = ortho.dot( flatV2.sub( flatLineStart ) );
+					const onPlane0_e1 = onPlane1_e0; // reuse
+					const onPlane1_e1 = abs( d1_e1 ).lessThan( float( DIST_EPSILON ) );
+					const crosses_e1 = onPlane0_e1.not().and( onPlane1_e1.not() ).and( d0_e1.mul( d1_e1 ).lessThan( 0 ) );
+
+					If( intersectCount.lessThan( 2 ), () => {
+
+						If( crosses_e1, () => {
+
+							const t_e1 = d0_e1.div( d0_e1.sub( d1_e1 ) );
+							const ix = mix( flatV1.x, flatV2.x, t_e1 );
+							const iz = mix( flatV1.z, flatV2.z, t_e1 );
+							If( intersectCount.equal( 0 ), () => {
+
+								triLineStartX.assign( ix );
+								triLineStartZ.assign( iz );
+
+							} ).Else( () => {
+
+								triLineEndX.assign( ix );
+								triLineEndZ.assign( iz );
+
+							} );
+							intersectCount.addAssign( 1 );
+
+						} ).ElseIf( onPlane0_e1.and( crosses_e0.not() ).and( onPlane0_e0.not() ), () => {
+
+							// V1 is on plane and wasn't counted from edge 0
+							If( intersectCount.equal( 0 ), () => {
+
+								triLineStartX.assign( flatV1.x );
+								triLineStartZ.assign( flatV1.z );
+
+							} ).Else( () => {
+
+								triLineEndX.assign( flatV1.x );
+								triLineEndZ.assign( flatV1.z );
+
+							} );
+							intersectCount.addAssign( 1 );
+
+						} );
+
+					} );
+
+					// Process edge 2: flatV2 -> flatV0
+					const d0_e2 = d1_e1; // reuse
+					const d1_e2 = d0_e0; // reuse
+					const onPlane0_e2 = onPlane1_e1; // reuse
+					const onPlane1_e2 = onPlane0_e0; // reuse
+					const crosses_e2 = onPlane0_e2.not().and( onPlane1_e2.not() ).and( d0_e2.mul( d1_e2 ).lessThan( 0 ) );
+
+					If( intersectCount.lessThan( 2 ), () => {
+
+						If( crosses_e2, () => {
+
+							const t_e2 = d0_e2.div( d0_e2.sub( d1_e2 ) );
+							const ix = mix( flatV2.x, flatV0.x, t_e2 );
+							const iz = mix( flatV2.z, flatV0.z, t_e2 );
+							If( intersectCount.equal( 0 ), () => {
+
+								triLineStartX.assign( ix );
+								triLineStartZ.assign( iz );
+
+							} ).Else( () => {
+
+								triLineEndX.assign( ix );
+								triLineEndZ.assign( iz );
+
+							} );
+							intersectCount.addAssign( 1 );
+
+						} ).ElseIf( onPlane0_e2.and( crosses_e1.not() ).and( onPlane0_e1.not() ), () => {
+
+							// V2 is on plane and wasn't counted
+							If( intersectCount.equal( 0 ), () => {
+
+								triLineStartX.assign( flatV2.x );
+								triLineStartZ.assign( flatV2.z );
+
+							} ).Else( () => {
+
+								triLineEndX.assign( flatV2.x );
+								triLineEndZ.assign( flatV2.z );
+
+							} );
+							intersectCount.addAssign( 1 );
+
+						} );
+
+					} );
+
+					// Need exactly 2 intersections to have an overlap
+					If( intersectCount.notEqual( 2 ), () => {
+
+						Continue();
+
+					} );
+
+					// Calculate overlap along the line direction
+					const triLineStart2D = vec3( triLineStartX, float( 0 ), triLineStartZ );
+					const triLineEnd2D = vec3( triLineEndX, float( 0 ), triLineEndZ );
+
+					// Project triLine endpoints onto line direction
+					const triDir = triLineEnd2D.sub( triLineStart2D );
+					const triDirDot = triDir.dot( lineDir );
+
+					// Swap if pointing opposite direction
+					const triS = vec3( triLineStartX, float( 0 ), triLineStartZ ).toVar();
+					const triE = vec3( triLineEndX, float( 0 ), triLineEndZ ).toVar();
+					If( triDirDot.lessThan( 0 ), () => {
+
+						const tmpX = triLineStartX;
+						const tmpZ = triLineStartZ;
+						triS.x.assign( triLineEndX );
+						triS.z.assign( triLineEndZ );
+						triE.x.assign( tmpX );
+						triE.z.assign( tmpZ );
+
+					} );
+
+					// Calculate 1D positions along the line
+					const s1 = float( 0 ); // line start at 0
+					const e1 = flatLineDist; // line end at distance
+					const s2 = triS.sub( flatLineStart ).dot( lineDir );
+					const e2 = triE.sub( flatLineStart ).dot( lineDir );
+
+					// Check for separation
+					const separated = e1.lessThanEqual( s2 ).or( e2.lessThanEqual( s1 ) );
+					If( separated, () => {
+
+						Continue();
+
+					} );
+
+					// Calculate overlap range (normalized 0-1 along original line)
+					const overlapStart = max( s1, s2 ).div( flatLineDist );
+					const overlapEnd = min( e1, e2 ).div( flatLineDist );
+
+					// We have a valid overlap! Count it
+					// TODO: Store the overlap range (overlapStart, overlapEnd) for this edge
 					pairCount.addAssign( 1 );
 
 				} );

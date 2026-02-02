@@ -1,6 +1,6 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { float, Fn, If, instancedArray, instanceIndex, uint } from 'three/tsl';
+import { float, Fn, If, instancedArray, instanceIndex, uint, vec3, vec4, mat4 } from 'three/tsl';
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -114,13 +114,23 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		}
 
+		// Concatenate matrices for this batch (16 floats per mesh)
+		const batchMatricesArray = new Float32Array( batchMeshCount * 16 );
+		for ( let i = batchStart; i < batchEnd; i ++ ) {
+
+			const localIdx = i - batchStart;
+			batchMatricesArray.set( meshes[ i ].matrixWorld.elements, localIdx * 16 );
+
+		}
+
 		// Filter groups that belong to this batch's meshes
 		// Also convert local mesh triangle offset to global batch triangle offset
 		const batchGroups = {
 			edgeOffsets: [],
 			edgeCounts: [],
 			triangleOffsets: [], // Now global within batch (not per-mesh)
-			meshCounts: []
+			meshCounts: [],
+			localMeshIndex: [] // Which mesh within this batch (for matrix lookup)
 		};
 
 		for ( let i = 0; i < webgpuData.groupCount; i ++ ) {
@@ -135,6 +145,7 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				batchGroups.edgeCounts.push( webgpuData.edgeCounts[ i ] );
 				batchGroups.triangleOffsets.push( globalTriOffset );
 				batchGroups.meshCounts.push( webgpuData.meshCounts[ i ] );
+				batchGroups.localMeshIndex.push( localMeshIdx );
 
 			}
 
@@ -149,40 +160,49 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		console.log( `  Batch ${batchIdx + 1}: ${batchGroups.edgeOffsets.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
 
-		// Create instanced arrays - now only 6 storage buffers!
+		// Create instanced arrays - 8 storage buffers (at the limit!)
 		// 1. positions (concatenated)
 		// 2. indices (concatenated)
-		// 3. triangleOffsets (per group)
-		// 4. meshCounts (per group)
-		// 5. testOutput
-		// edgesData is shared but only used if we add edge processing
+		// 3. matrices (concatenated, 16 floats per mesh)
+		// 4. triangleOffsets (per group)
+		// 5. localMeshIndex (per group, for matrix lookup)
+		// 6. edgeOffsets (per group)
+		// 7. edgesData (shared across batches)
+		// 8. testOutput
 
 		const batchPositions = instancedArray( batchPositionsArray, 'float' );
 		const batchIndices = instancedArray( batchIndicesArray, 'uint' );
+		const batchMatrices = instancedArray( batchMatricesArray, 'float' );
 		const batchTriangleOffsets = instancedArray( new Uint32Array( batchGroups.triangleOffsets ), 'uint' );
-		const batchMeshCounts = instancedArray( new Uint32Array( batchGroups.meshCounts ), 'uint' );
+		const batchLocalMeshIndex = instancedArray( new Uint32Array( batchGroups.localMeshIndex ), 'uint' );
+		const batchEdgeOffsets = instancedArray( new Uint32Array( batchGroups.edgeOffsets ), 'uint' );
 
-		// Test output for this batch
-		const testOutput = instancedArray( new Float32Array( batchGroups.edgeOffsets.length * 3 ), 'float' );
+		// Test output for this batch - now 6 floats per group (edge start + end)
+		const testOutput = instancedArray( new Float32Array( batchGroups.edgeOffsets.length * 6 ), 'float' );
 
 		// Build compute shader - now with simple dynamic indexing!
 		const computeShader = Fn( () => {
 
 			const groupIdx = instanceIndex;
-			const triOffset = batchTriangleOffsets.element( groupIdx );
+			const edgeOffset = batchEdgeOffsets.element( groupIdx );
 
-			// Read first triangle's first vertex index (global within batch)
-			const idx0 = batchIndices.element( triOffset.mul( 3 ) );
+			// Read first edge in this group (6 floats per edge: start xyz, end xyz)
+			const edgeDataOffset = edgeOffset.mul( 6 );
+			const edgeStartX = edgesData.element( edgeDataOffset );
+			const edgeStartY = edgesData.element( edgeDataOffset.add( 1 ) );
+			const edgeStartZ = edgesData.element( edgeDataOffset.add( 2 ) );
+			const edgeEndX = edgesData.element( edgeDataOffset.add( 3 ) );
+			const edgeEndY = edgesData.element( edgeDataOffset.add( 4 ) );
+			const edgeEndZ = edgesData.element( edgeDataOffset.add( 5 ) );
 
-			// Read vertex position (3 floats per vertex)
-			const px = batchPositions.element( idx0.mul( 3 ) );
-			const py = batchPositions.element( idx0.mul( 3 ).add( 1 ) );
-			const pz = batchPositions.element( idx0.mul( 3 ).add( 2 ) );
-
-			// Write to test output
-			testOutput.element( groupIdx.mul( 3 ) ).assign( px );
-			testOutput.element( groupIdx.mul( 3 ).add( 1 ) ).assign( py );
-			testOutput.element( groupIdx.mul( 3 ).add( 2 ) ).assign( pz );
+			// Write edge start and end to test output (6 floats per group)
+			const outOffset = groupIdx.mul( 6 );
+			testOutput.element( outOffset ).assign( edgeStartX );
+			testOutput.element( outOffset.add( 1 ) ).assign( edgeStartY );
+			testOutput.element( outOffset.add( 2 ) ).assign( edgeStartZ );
+			testOutput.element( outOffset.add( 3 ) ).assign( edgeEndX );
+			testOutput.element( outOffset.add( 4 ) ).assign( edgeEndY );
+			testOutput.element( outOffset.add( 5 ) ).assign( edgeEndZ );
 
 		} )().compute( batchGroups.edgeOffsets.length );
 
@@ -193,11 +213,13 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 		const resultBuffer = await renderer.getArrayBufferAsync( testOutput.value );
 		const result = new Float32Array( resultBuffer );
 
-		// Log first few results to verify
-		console.log( `  Test output (first 3 groups):` );
+		// Log first few results to verify edge reading
+		console.log( `  Test output (first 3 groups - edge start/end):` );
 		for ( let i = 0; i < Math.min( 3, batchGroups.edgeOffsets.length ); i ++ ) {
 
-			console.log( `    Group ${i}: (${result[ i * 3 ]}, ${result[ i * 3 + 1 ]}, ${result[ i * 3 + 2 ]})` );
+			const start = `(${result[ i * 6 ].toFixed( 2 )}, ${result[ i * 6 + 1 ].toFixed( 2 )}, ${result[ i * 6 + 2 ].toFixed( 2 )})`;
+			const end = `(${result[ i * 6 + 3 ].toFixed( 2 )}, ${result[ i * 6 + 4 ].toFixed( 2 )}, ${result[ i * 6 + 5 ].toFixed( 2 )})`;
+			console.log( `    Group ${i}: start=${start} end=${end}` );
 
 		}
 

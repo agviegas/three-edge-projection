@@ -46,6 +46,9 @@ export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, meshIn
 // We concatenate mesh data within each batch to stay under WebGPU's 8 storage buffer limit
 const MESHES_PER_BATCH = 64;
 
+// Group info layout: [edgeOffset, edgeCount, triOffset, triCount, meshIdx] per group
+const GROUP_INFO_STRIDE = 5;
+
 export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
 
 	const renderer = new THREEWEBGPU.WebGPURenderer();
@@ -123,15 +126,9 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 		}
 
-		// Filter groups that belong to this batch's meshes
-		// Also convert local mesh triangle offset to global batch triangle offset
-		const batchGroups = {
-			edgeOffsets: [],
-			edgeCounts: [],
-			triangleOffsets: [], // Now global within batch (not per-mesh)
-			meshCounts: [],
-			localMeshIndex: [] // Which mesh within this batch (for matrix lookup)
-		};
+		// Filter groups that belong to this batch's meshes and pack into groupInfo
+		// Layout: [edgeOffset, edgeCount, triOffset, triCount, meshIdx] per group
+		const batchGroupsList = [];
 
 		for ( let i = 0; i < webgpuData.groupCount; i ++ ) {
 
@@ -141,70 +138,131 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				const localMeshIdx = globalMeshIdx - batchStart;
 				const globalTriOffset = meshTriangleStarts[ localMeshIdx ] + webgpuData.meshOffsets[ i ];
 
-				batchGroups.edgeOffsets.push( webgpuData.edgeOffsets[ i ] );
-				batchGroups.edgeCounts.push( webgpuData.edgeCounts[ i ] );
-				batchGroups.triangleOffsets.push( globalTriOffset );
-				batchGroups.meshCounts.push( webgpuData.meshCounts[ i ] );
-				batchGroups.localMeshIndex.push( localMeshIdx );
+				batchGroupsList.push( {
+					edgeOffset: webgpuData.edgeOffsets[ i ],
+					edgeCount: webgpuData.edgeCounts[ i ],
+					triOffset: globalTriOffset,
+					triCount: webgpuData.meshCounts[ i ],
+					meshIdx: localMeshIdx
+				} );
 
 			}
 
 		}
 
-		if ( batchGroups.edgeOffsets.length === 0 ) {
+		if ( batchGroupsList.length === 0 ) {
 
 			console.log( `  Batch ${batchIdx + 1}: no groups, skipping` );
 			continue;
 
 		}
 
-		console.log( `  Batch ${batchIdx + 1}: ${batchGroups.edgeOffsets.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
+		// Pack group info into a single Uint32Array
+		const batchGroupInfoArray = new Uint32Array( batchGroupsList.length * GROUP_INFO_STRIDE );
+		for ( let i = 0; i < batchGroupsList.length; i ++ ) {
 
-		// Create instanced arrays - 8 storage buffers (at the limit!)
+			const g = batchGroupsList[ i ];
+			const offset = i * GROUP_INFO_STRIDE;
+			batchGroupInfoArray[ offset + 0 ] = g.edgeOffset;
+			batchGroupInfoArray[ offset + 1 ] = g.edgeCount;
+			batchGroupInfoArray[ offset + 2 ] = g.triOffset;
+			batchGroupInfoArray[ offset + 3 ] = g.triCount;
+			batchGroupInfoArray[ offset + 4 ] = g.meshIdx;
+
+		}
+
+		console.log( `  Batch ${batchIdx + 1}: ${batchGroupsList.length} groups, ${totalPositions / 3} vertices, ${totalIndices / 3} triangles` );
+
+		// Create instanced arrays - 7 storage buffers (1 spare!)
 		// 1. positions (concatenated)
 		// 2. indices (concatenated)
 		// 3. matrices (concatenated, 16 floats per mesh)
-		// 4. triangleOffsets (per group)
-		// 5. localMeshIndex (per group, for matrix lookup)
-		// 6. edgeOffsets (per group)
-		// 7. edgesData (shared across batches)
-		// 8. testOutput
+		// 4. groupInfo (packed: edgeOffset, edgeCount, triOffset, triCount, meshIdx)
+		// 5. edgesData (shared across batches)
+		// 6. testOutput
+		// 7. (spare for overlaps output later)
 
 		const batchPositions = instancedArray( batchPositionsArray, 'float' );
 		const batchIndices = instancedArray( batchIndicesArray, 'uint' );
 		const batchMatrices = instancedArray( batchMatricesArray, 'float' );
-		const batchTriangleOffsets = instancedArray( new Uint32Array( batchGroups.triangleOffsets ), 'uint' );
-		const batchLocalMeshIndex = instancedArray( new Uint32Array( batchGroups.localMeshIndex ), 'uint' );
-		const batchEdgeOffsets = instancedArray( new Uint32Array( batchGroups.edgeOffsets ), 'uint' );
+		const batchGroupInfo = instancedArray( batchGroupInfoArray, 'uint' );
 
-		// Test output for this batch - now 6 floats per group (edge start + end)
-		const testOutput = instancedArray( new Float32Array( batchGroups.edgeOffsets.length * 6 ), 'float' );
+		// Test output: 9 floats per group (edge start xyz, edge end xyz, tri vertex xyz)
+		const testOutput = instancedArray( new Float32Array( batchGroupsList.length * 9 ), 'float' );
 
-		// Build compute shader - now with simple dynamic indexing!
+		// Build compute shader
 		const computeShader = Fn( () => {
 
 			const groupIdx = instanceIndex;
-			const edgeOffset = batchEdgeOffsets.element( groupIdx );
+
+			// Unpack group info
+			const infoOffset = groupIdx.mul( GROUP_INFO_STRIDE );
+			const edgeOffset = batchGroupInfo.element( infoOffset );
+			const edgeCount = batchGroupInfo.element( infoOffset.add( 1 ) );
+			const triOffset = batchGroupInfo.element( infoOffset.add( 2 ) );
+			const triCount = batchGroupInfo.element( infoOffset.add( 3 ) );
+			const meshIdx = batchGroupInfo.element( infoOffset.add( 4 ) );
 
 			// Read first edge in this group (6 floats per edge: start xyz, end xyz)
 			const edgeDataOffset = edgeOffset.mul( 6 );
-			const edgeStartX = edgesData.element( edgeDataOffset );
-			const edgeStartY = edgesData.element( edgeDataOffset.add( 1 ) );
-			const edgeStartZ = edgesData.element( edgeDataOffset.add( 2 ) );
-			const edgeEndX = edgesData.element( edgeDataOffset.add( 3 ) );
-			const edgeEndY = edgesData.element( edgeDataOffset.add( 4 ) );
-			const edgeEndZ = edgesData.element( edgeDataOffset.add( 5 ) );
+			const edgeStart = vec3(
+				edgesData.element( edgeDataOffset ),
+				edgesData.element( edgeDataOffset.add( 1 ) ),
+				edgesData.element( edgeDataOffset.add( 2 ) )
+			);
+			const edgeEnd = vec3(
+				edgesData.element( edgeDataOffset.add( 3 ) ),
+				edgesData.element( edgeDataOffset.add( 4 ) ),
+				edgesData.element( edgeDataOffset.add( 5 ) )
+			);
 
-			// Write edge start and end to test output (6 floats per group)
-			const outOffset = groupIdx.mul( 6 );
-			testOutput.element( outOffset ).assign( edgeStartX );
-			testOutput.element( outOffset.add( 1 ) ).assign( edgeStartY );
-			testOutput.element( outOffset.add( 2 ) ).assign( edgeStartZ );
-			testOutput.element( outOffset.add( 3 ) ).assign( edgeEndX );
-			testOutput.element( outOffset.add( 4 ) ).assign( edgeEndY );
-			testOutput.element( outOffset.add( 5 ) ).assign( edgeEndZ );
+			// Read first triangle's first vertex index (global within batch)
+			const idx0 = batchIndices.element( triOffset.mul( 3 ) );
 
-		} )().compute( batchGroups.edgeOffsets.length );
+			// Read vertex position (3 floats per vertex) - local coordinates
+			const localPos = vec3(
+				batchPositions.element( idx0.mul( 3 ) ),
+				batchPositions.element( idx0.mul( 3 ).add( 1 ) ),
+				batchPositions.element( idx0.mul( 3 ).add( 2 ) )
+			);
+
+			// Read matrix for this mesh (16 floats, column-major)
+			const matOffset = meshIdx.mul( 16 );
+			const matrix = mat4(
+				batchMatrices.element( matOffset ),
+				batchMatrices.element( matOffset.add( 1 ) ),
+				batchMatrices.element( matOffset.add( 2 ) ),
+				batchMatrices.element( matOffset.add( 3 ) ),
+				batchMatrices.element( matOffset.add( 4 ) ),
+				batchMatrices.element( matOffset.add( 5 ) ),
+				batchMatrices.element( matOffset.add( 6 ) ),
+				batchMatrices.element( matOffset.add( 7 ) ),
+				batchMatrices.element( matOffset.add( 8 ) ),
+				batchMatrices.element( matOffset.add( 9 ) ),
+				batchMatrices.element( matOffset.add( 10 ) ),
+				batchMatrices.element( matOffset.add( 11 ) ),
+				batchMatrices.element( matOffset.add( 12 ) ),
+				batchMatrices.element( matOffset.add( 13 ) ),
+				batchMatrices.element( matOffset.add( 14 ) ),
+				batchMatrices.element( matOffset.add( 15 ) )
+			);
+
+			// Transform vertex to world coordinates
+			const worldPos = matrix.mul( vec4( localPos, float( 1.0 ) ) ).xyz;
+
+			// Write to test output: edge start, edge end, transformed triangle vertex
+			const outOffset = groupIdx.mul( 9 );
+			testOutput.element( outOffset ).assign( edgeStart.x );
+			testOutput.element( outOffset.add( 1 ) ).assign( edgeStart.y );
+			testOutput.element( outOffset.add( 2 ) ).assign( edgeStart.z );
+			testOutput.element( outOffset.add( 3 ) ).assign( edgeEnd.x );
+			testOutput.element( outOffset.add( 4 ) ).assign( edgeEnd.y );
+			testOutput.element( outOffset.add( 5 ) ).assign( edgeEnd.z );
+			testOutput.element( outOffset.add( 6 ) ).assign( worldPos.x );
+			testOutput.element( outOffset.add( 7 ) ).assign( worldPos.y );
+			testOutput.element( outOffset.add( 8 ) ).assign( worldPos.z );
+
+		} )().compute( batchGroupsList.length );
 
 		// Execute on GPU
 		await renderer.computeAsync( computeShader );
@@ -213,13 +271,14 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 		const resultBuffer = await renderer.getArrayBufferAsync( testOutput.value );
 		const result = new Float32Array( resultBuffer );
 
-		// Log first few results to verify edge reading
-		console.log( `  Test output (first 3 groups - edge start/end):` );
-		for ( let i = 0; i < Math.min( 3, batchGroups.edgeOffsets.length ); i ++ ) {
+		// Log first few results to verify combined reading
+		console.log( `  Test output (first 3 groups - edge + tri vertex):` );
+		for ( let i = 0; i < Math.min( 3, batchGroupsList.length ); i ++ ) {
 
-			const start = `(${result[ i * 6 ].toFixed( 2 )}, ${result[ i * 6 + 1 ].toFixed( 2 )}, ${result[ i * 6 + 2 ].toFixed( 2 )})`;
-			const end = `(${result[ i * 6 + 3 ].toFixed( 2 )}, ${result[ i * 6 + 4 ].toFixed( 2 )}, ${result[ i * 6 + 5 ].toFixed( 2 )})`;
-			console.log( `    Group ${i}: start=${start} end=${end}` );
+			const eStart = `(${result[ i * 9 ].toFixed( 2 )}, ${result[ i * 9 + 1 ].toFixed( 2 )}, ${result[ i * 9 + 2 ].toFixed( 2 )})`;
+			const eEnd = `(${result[ i * 9 + 3 ].toFixed( 2 )}, ${result[ i * 9 + 4 ].toFixed( 2 )}, ${result[ i * 9 + 5 ].toFixed( 2 )})`;
+			const triV = `(${result[ i * 9 + 6 ].toFixed( 2 )}, ${result[ i * 9 + 7 ].toFixed( 2 )}, ${result[ i * 9 + 8 ].toFixed( 2 )})`;
+			console.log( `    Group ${i}: edge=${eStart}->${eEnd}, triV0=${triV}` );
 
 		}
 

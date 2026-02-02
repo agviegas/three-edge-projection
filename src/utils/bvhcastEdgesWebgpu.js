@@ -391,8 +391,34 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
+					// Check if line is a triangle edge (isLineTriangleEdge)
+					// If line start and end both match triangle vertices, skip it (self-shadowing)
+					const startToV0 = edgeStart.sub( v0 );
+					const startToV1 = edgeStart.sub( v1 );
+					const startToV2 = edgeStart.sub( v2 );
+					const endToV0 = edgeEnd.sub( v0 );
+					const endToV1 = edgeEnd.sub( v1 );
+					const endToV2 = edgeEnd.sub( v2 );
+
+					const startMatchesV0 = startToV0.dot( startToV0 ).lessThanEqual( float( EPSILON ) );
+					const startMatchesV1 = startToV1.dot( startToV1 ).lessThanEqual( float( EPSILON ) );
+					const startMatchesV2 = startToV2.dot( startToV2 ).lessThanEqual( float( EPSILON ) );
+					const endMatchesV0 = endToV0.dot( endToV0 ).lessThanEqual( float( EPSILON ) );
+					const endMatchesV1 = endToV1.dot( endToV1 ).lessThanEqual( float( EPSILON ) );
+					const endMatchesV2 = endToV2.dot( endToV2 ).lessThanEqual( float( EPSILON ) );
+
+					const startMatchesAny = startMatchesV0.or( startMatchesV1 ).or( startMatchesV2 );
+					const endMatchesAny = endMatchesV0.or( endMatchesV1 ).or( endMatchesV2 );
+					const isTriangleEdge = startMatchesAny.and( endMatchesAny );
+
+					If( isTriangleEdge, () => {
+
+						Continue();
+
+					} );
+
 					// Passed all culling - count this pair
-					// TODO: Next steps - isLineTriangleEdge and getProjectedLineOverlap
+					// TODO: Next step - getProjectedLineOverlap
 					pairCount.addAssign( 1 );
 
 				} );

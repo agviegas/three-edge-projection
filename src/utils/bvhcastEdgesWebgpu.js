@@ -2,89 +2,69 @@
 import * as THREEWEBGPU from 'three/webgpu';
 import { float, Fn, If, instancedArray, instanceIndex } from 'three/tsl';
 
-export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, edgeOffsets, edgeCounts, meshOffsets, meshCounts ) {
-
-	let counter = 0;
+export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, counter, meshIndex ) {
 
 	edgesBvh.bvhcast( bvh, mesh.matrixWorld, {
 
 		intersectsRanges: ( edgeOffset, edgeCount, meshOffset, meshCount ) => {
 
 			// pairs.push( edgeOffset, edgeCount, meshOffset, meshCount );
-			edgeOffsets[ counter ] = edgeOffset;
-			edgeCounts[ counter ] = edgeCount;
-			meshOffsets[ counter ] = meshOffset;
-			meshCounts[ counter ] = meshCount;
+			webgpuData.edgeOffsets[ counter ] = edgeOffset;
+			webgpuData.edgeCounts[ counter ] = edgeCount;
+			webgpuData.meshOffsets[ counter ] = meshOffset;
+			webgpuData.meshCounts[ counter ] = meshCount;
+			webgpuData.meshIndex[ counter ] = meshIndex;
 			counter ++;
 
 		},
 
 	} );
 
-	// console.log( counter );
-
 	return counter;
 
 }
 
-export async function getBvhcastEdgesWebgpu( edgeOffsets, edgeCounts, meshOffsets, meshCounts ) {
+export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
 
 	const renderer = new THREEWEBGPU.WebGPURenderer();
 	await renderer.init();
 
-	// 1. Create input data
-	const inputData = new Float32Array( [ 1, 2, 3, 4, 5 ] );
+	const meshIndex = instancedArray( webgpuData.meshIndex, 'uint' );
+	const edgeOffsets = instancedArray( webgpuData.edgeOffsets, 'uint' );
+	const edgeCounts = instancedArray( webgpuData.edgeCounts, 'uint' );
+	const meshOffsets = instancedArray( webgpuData.meshOffsets, 'uint' );
+	const meshCounts = instancedArray( webgpuData.meshCounts, 'uint' );
 
-	// 2. Upload to GPU buffer
-	// instancedArray creates a storage buffer on the GPU
-	// 'float' means each element is a single float
-	const buffer = instancedArray( inputData, 'float' );
+	const meshesPosInstancedArrays = [];
+	const meshesIndicesInstancedArrays = [];
 
-	const test = [
-		instancedArray( new Float32Array( inputData.length ), 'float' ),
-		instancedArray( new Float32Array( inputData.length ), 'float' ),
-	];
+	for ( let i = 0; i < meshes.length; i ++ ) {
 
-	// 3. Define the compute shader
-	const computeShader = Fn( () => {
+		meshesPosInstancedArrays.push( instancedArray( meshes[ i ].geometry.attributes.position.array, 'float' ) );
 
-		// instanceIndex is a built-in: which thread am I?
-		// buffer.element(i) accesses the i-th element
-		const value = buffer.element( instanceIndex );
+	}
 
-		If( value.lessThan( 2 ), () => {
+	for ( let i = 0; i < meshes.length; i ++ ) {
 
-    		test[ 0 ].element( instanceIndex ).assign( float( 1.0 ) );
+		meshesIndicesInstancedArrays.push( instancedArray( meshes[ i ].geometry.index.array, 'uint' ) );
 
-		} ).ElseIf( value.greaterThan( 2 ), () => {
+	}
 
-    		test[ 1 ].element( instanceIndex ).assign( float( 1.0 ) );
-
-		} );
-
-		// Multiply by 2 and write back
-		// .assign() is like = in regular code
-		// .mul() is like * in regular code
-		value.assign( value.mul( 2 ) );
-
-	} )().compute( 5 ); // Request 5 invocations (dispatches 1 workgroup of 64 threads)
+	// const computeShader = Fn( () => {
 
 
-	// 4. Execute on GPU
-	await renderer.computeAsync( computeShader );
 
 
-	// 5. Read results back
-	const resultBuffer = await renderer.getArrayBufferAsync( buffer.value );
-	const result = new Float32Array( resultBuffer );
-	console.log( Array.from( result ).join( ', ' ) );
+	// } )().compute( webgpuData.meshStarts.length ); // Request 5 invocations (dispatches 1 workgroup of 64 threads)
 
-	const firstResultBuffer = await renderer.getArrayBufferAsync( test[ 0 ].value );
-	const firstResult = new Float32Array( firstResultBuffer );
-	console.log( Array.from( firstResult ).join( ', ' ) );
 
-	const secondResultBuffer = await renderer.getArrayBufferAsync( test[ 1 ].value );
-	const secondResult = new Float32Array( secondResultBuffer );
-	console.log( Array.from( secondResult ).join( ', ' ) );
+	// // 4. Execute on GPU
+	// await renderer.computeAsync( computeShader );
+
+
+	// // 5. Read results back
+	// const resultBuffer = await renderer.getArrayBufferAsync( buffer.value );
+	// const result = new Float32Array( resultBuffer );
+	// console.log( Array.from( result ).join( ', ' ) );
 
 }

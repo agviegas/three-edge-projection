@@ -132,15 +132,16 @@ class ProjectedEdgeCollector {
 		time = performance.now();
 
 		let useWebGpu = true;
-		let edgeOffsets, edgeCounts, meshOffsets, meshCounts;
+		const size = 99999999;
+		const webgpuData = {};
 
 		if ( useWebGpu ) {
 
-			const size = 99999999;
-			edgeOffsets = new Uint32Array( size );
-			edgeCounts = new Uint32Array( size );
-			meshOffsets = new Uint32Array( size );
-			meshCounts = new Uint32Array( size );
+			webgpuData.edgeOffsets = new Uint32Array( size );
+			webgpuData.edgeCounts = new Uint32Array( size );
+			webgpuData.meshOffsets = new Uint32Array( size );
+			webgpuData.meshCounts = new Uint32Array( size );
+			webgpuData.meshIndex = new Uint32Array( size );
 
 		}
 
@@ -166,7 +167,7 @@ class ProjectedEdgeCollector {
 			if ( useWebGpu ) {
 
 				// bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
-				counter += getEdgesTrianglesGroups( edgesBvh, bvhs.get( mesh.geometry ), mesh, edgeOffsets, edgeCounts, meshOffsets, meshCounts );
+				counter = getEdgesTrianglesGroups( edgesBvh, bvhs.get( mesh.geometry ), mesh, webgpuData, counter, m );
 
 			} else {
 
@@ -179,7 +180,7 @@ class ProjectedEdgeCollector {
 
 		if ( useWebGpu ) {
 
-			getBvhcastEdgesWebgpu( edgeOffsets, edgeCounts, meshOffsets, meshCounts );
+			getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap );
 
 		}
 

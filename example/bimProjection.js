@@ -31,7 +31,7 @@ const params = {
 const ANGLE_THRESHOLD = 50;
 // let needsRender = false;
 let gui;
-let projectedMeshes, projection, drawThroughProjection;
+let projection, drawThroughProjection;
 let outputContainer;
 let task = null;
 Logger.enabled = params.logging;
@@ -111,15 +111,18 @@ async function loadModel(
 
 const model = await loadModel("/school_arq.frag");
 
-const clipper = components.get(OBC.Clipper);
-const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));
-const plane = clipper.list.get(planeId);
+// const clipper = components.get(OBC.Clipper);
+// const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));
+// const plane = clipper.list.get(planeId);
 
-projectedMeshes = new THREE.Group();
-world.scene.three.add(projectedMeshes);
+// projectedMeshes = new THREE.Group();
+// world.scene.three.add(projectedMeshes);
 
 const allMeshes = new THREE.Group();
 world.scene.three.add(allMeshes);
+allMeshes.rotation.x = Math.PI / 4;
+allMeshes.rotation.z = Math.PI / 4;
+
 
 const material = new THREE.MeshLambertMaterial({
 	color: new THREE.Color("white"),
@@ -133,7 +136,6 @@ const geometries = new Map();
 
 for (const itemId in allMeshesData) {
 	const meshData = allMeshesData[itemId];
-	const itemIdInt = parseInt(itemId, 10);
 	for (const geomData of meshData) {
 		if (
 			!geomData.positions ||
@@ -162,7 +164,7 @@ for (const itemId in allMeshesData) {
 		const geometry = geometries.get(representationId);
 
 		const mesh = new THREE.Mesh(geometry, material);
-		mesh.userData.itemId = itemIdInt;
+		mesh.userData.localId = geomData.localId;
 		mesh.applyMatrix4(geomData.transform);
 		mesh.updateWorldMatrix(true, true);
 		allMeshes.add(mesh);
@@ -191,9 +193,9 @@ allMeshes.traverse(c => {
 
 });
 
-// center model
-const box = new THREE.Box3();
-box.setFromObject(projectedMeshes, true);
+// // center model
+// const box = new THREE.Box3();
+// box.setFromObject(projectedMeshes, true);
 
 // create projection display mesh
 projection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x030303, depthTest: false }));
@@ -222,7 +224,7 @@ world.renderer.onBeforeUpdate.add(() => {
 
 	}
 
-	projectedMeshes.visible = params.displayModel;
+	// projectedMeshes.visible = params.displayModel;
 	drawThroughProjection.visible = params.displayDrawThroughProjection;
 
 });
@@ -240,31 +242,32 @@ function* updateEdges(runTime = 30) {
 	outputContainer.innerText = 'Generating...';
 
 
-	const previous = [...projectedMeshes.children];
-	for (const child of previous) {
-		projectedMeshes.remove(child);
-		child.geometry = null;
-	}
+	// const previous = [...projectedMeshes.children];
+	// for (const child of previous) {
+	// 	projectedMeshes.remove(child);
+	// 	child.geometry = null;
+	// }
 
-	const tempBbox = new THREE.Box3();
+	// const tempBbox = new THREE.Box3();
 
-	for (const child of allMeshes.children) {
+	// for (const child of allMeshes.children) {
 		
-		// INSERT_YOUR_CODE
-		// Compute the bounding box in world space for this mesh
-		tempBbox.setFromObject(child);
+	// 	// INSERT_YOUR_CODE
+	// 	// Compute the bounding box in world space for this mesh
+	// 	// tempBbox.setFromObject(child);
 
-		// Assume the clipping plane is horizontal and defined by params.clippingHeight
-		// Only add meshes whose bbox.min.y is below the clipping height, i.e., at least partially under
-		if (tempBbox.min.y > plane.three.constant) {
-			continue;
-		}
+	// 	// Assume the clipping plane is horizontal and defined by params.clippingHeight
+	// 	// Only add meshes whose bbox.min.y is below the clipping height, i.e., at least partially under
+	// 	// if (tempBbox.min.y > plane.three.constant) {
+	// 	// 	continue;
+	// 	// }
 
-		const newMesh = new THREE.Mesh(child.geometry, projectedMaterial);
-		newMesh.applyMatrix4(child.matrixWorld);
+	// 	const newMesh = new THREE.Mesh(child.geometry, projectedMaterial);
+	// 	newMesh.userData.itemId = child.userData.itemId;
+	// 	newMesh.applyMatrix4(child.matrixWorld);
 
-		projectedMeshes.add(newMesh);
-	}
+	// 	projectedMeshes.add(newMesh);
+	// }
 
 	// dispose the geometry
 	projection.geometry.dispose();
@@ -281,7 +284,7 @@ function* updateEdges(runTime = 30) {
 	generator.includeIntersectionEdges = params.includeIntersectionEdges;
 	console.log(generator.includeIntersectionEdges);
 
-	const collection = yield* generator.generate(projectedMeshes, {
+	const collection = yield* generator.generate(allMeshes, {
 		visibilityCuller: new VisibilityCuller(world.renderer.three, { pixelsPerMeter: 0.02 }),
 		onProgress: (msg, tot, edges) => {
 

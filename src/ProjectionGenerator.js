@@ -14,6 +14,7 @@ import { bvhcastEdges } from './utils/bvhcastEdges.js';
 import { getAllMeshes } from './utils/getAllMeshes.js';
 import { VisibilityCuller } from './VisibilityCuller.js';
 import { Logger } from './utils/Logger.js';
+import { getBvhcastEdgesWebgpu, getEdgesTrianglesGroups } from './utils/bvhcastEdgesWebgpu.js';
 
 // these shared variables are not used across "yield" boundaries in the
 // generator so there's no risk of overwriting another tasks data
@@ -129,6 +130,22 @@ class ProjectedEdgeCollector {
 		// BVHcast overlaps
 		Logger.startStep( 'BVHcast overlaps' );
 		time = performance.now();
+
+		let useWebGpu = true;
+		let edgeOffsets, edgeCounts, meshOffsets, meshCounts;
+
+		if ( useWebGpu ) {
+
+			const size = 99999999;
+			edgeOffsets = new Uint32Array( size );
+			edgeCounts = new Uint32Array( size );
+			meshOffsets = new Uint32Array( size );
+			meshCounts = new Uint32Array( size );
+
+		}
+
+		let counter = 0;
+
 		for ( let m = 0; m < meshes.length; m ++ ) {
 
 			if ( performance.now() - time > iterationTime ) {
@@ -146,7 +163,23 @@ class ProjectedEdgeCollector {
 
 			// use bvhcast to compare all edges against all meshes
 			const mesh = meshes[ m ];
-			bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
+			if ( useWebGpu ) {
+
+				// bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
+				counter += getEdgesTrianglesGroups( edgesBvh, bvhs.get( mesh.geometry ), mesh, edgeOffsets, edgeCounts, meshOffsets, meshCounts );
+
+			} else {
+
+				bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
+
+			}
+
+		}
+
+
+		if ( useWebGpu ) {
+
+			getBvhcastEdgesWebgpu( edgeOffsets, edgeCounts, meshOffsets, meshCounts );
 
 		}
 

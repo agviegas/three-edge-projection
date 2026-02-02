@@ -1,6 +1,6 @@
 
 import * as THREEWEBGPU from 'three/webgpu';
-import { Fn, instancedArray, instanceIndex } from 'three/tsl';
+import { float, Fn, If, instancedArray, instanceIndex } from 'three/tsl';
 
 export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, edgeOffsets, edgeCounts, meshOffsets, meshCounts ) {
 
@@ -40,12 +40,27 @@ export async function getBvhcastEdgesWebgpu( edgeOffsets, edgeCounts, meshOffset
 	// 'float' means each element is a single float
 	const buffer = instancedArray( inputData, 'float' );
 
+	const test = [
+		instancedArray( new Float32Array( inputData.length ), 'float' ),
+		instancedArray( new Float32Array( inputData.length ), 'float' ),
+	];
+
 	// 3. Define the compute shader
 	const computeShader = Fn( () => {
 
 		// instanceIndex is a built-in: which thread am I?
 		// buffer.element(i) accesses the i-th element
 		const value = buffer.element( instanceIndex );
+
+		If( value.lessThan( 2 ), () => {
+
+    		test[ 0 ].element( instanceIndex ).assign( float( 1.0 ) );
+
+		} ).ElseIf( value.greaterThan( 2 ), () => {
+
+    		test[ 1 ].element( instanceIndex ).assign( float( 1.0 ) );
+
+		} );
 
 		// Multiply by 2 and write back
 		// .assign() is like = in regular code
@@ -58,10 +73,18 @@ export async function getBvhcastEdgesWebgpu( edgeOffsets, edgeCounts, meshOffset
 	// 4. Execute on GPU
 	await renderer.computeAsync( computeShader );
 
+
 	// 5. Read results back
 	const resultBuffer = await renderer.getArrayBufferAsync( buffer.value );
 	const result = new Float32Array( resultBuffer );
 	console.log( Array.from( result ).join( ', ' ) );
 
+	const firstResultBuffer = await renderer.getArrayBufferAsync( test[ 0 ].value );
+	const firstResult = new Float32Array( firstResultBuffer );
+	console.log( Array.from( firstResult ).join( ', ' ) );
+
+	const secondResultBuffer = await renderer.getArrayBufferAsync( test[ 1 ].value );
+	const secondResult = new Float32Array( secondResultBuffer );
+	console.log( Array.from( secondResult ).join( ', ' ) );
 
 }

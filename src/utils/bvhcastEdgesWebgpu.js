@@ -3,6 +3,7 @@ import * as THREEWEBGPU from 'three/webgpu';
 import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Break, Continue, max, min, cross, normalize, dot, abs, select, mix } from 'three/tsl';
 
 const EPSILON = 1e-10; // Threshold for floating point comparisons
+const AREA_EPSILON = 1e-16; // Threshold for degenerate triangle detection
 
 // Convert edges (Line3[]) to flat Float32Array
 // Layout: [start.x, start.y, start.z, end.x, end.y, end.z, ...] per edge
@@ -268,7 +269,15 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				const edge1 = v1.sub( v0 );
 				const edge2 = v2.sub( v0 );
 				const normal = cross( edge1, edge2 );
-				// normal.y > 0 means triangle faces up (away from camera looking down)
+
+				// Check for degenerate triangle (area too small)
+				// Area = 0.5 * |cross(edge1, edge2)|, so |cross|^2 < (2*AREA_EPSILON)^2 means degenerate
+				const normalLengthSq = normal.dot( normal );
+				If( normalLengthSq.lessThan( float( 4 * AREA_EPSILON * AREA_EPSILON ) ), () => {
+
+					Continue();
+
+				} );
 
 				// Back-face culling: skip triangles that face down (away from camera looking down)
 				// normal.y < 0 means triangle faces down (back face from top-down view)

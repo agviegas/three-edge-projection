@@ -268,9 +268,10 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 				const normal = cross( edge1, edge2 );
 				// normal.y > 0 means triangle faces up (away from camera looking down)
 
-				// Back-face culling: skip triangles that face up (for FrontSide rendering)
+				// Back-face culling: skip triangles that face down (away from camera looking down)
+				// normal.y < 0 means triangle faces down (back face from top-down view)
 				// TODO: Handle DoubleSide and BackSide materials, and inverted matrices
-				If( normal.y.greaterThan( 0 ), () => {
+				If( normal.y.lessThan( 0 ), () => {
 
 					Continue();
 

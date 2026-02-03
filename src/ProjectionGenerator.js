@@ -45,13 +45,14 @@ function toLineGeometry( edges ) {
 
 class ProjectedEdgeCollector {
 
-	constructor( scene ) {
+	constructor( scene, useWebGPU = true ) {
 
 		this.meshes = getAllMeshes( scene );
 		this.bvhs = new Map();
 		this.visibleEdges = [];
 		this.hiddenEdges = [];
 		this.iterationTime = 30;
+		this.useWebGPU = useWebGPU;
 
 	}
 
@@ -131,7 +132,7 @@ class ProjectedEdgeCollector {
 		Logger.startStep( 'BVHcast overlaps' );
 		time = performance.now();
 
-		let useWebGpu = true;
+		const useWebGpu = this.useWebGPU;
 		const size = 99999999;
 		const webgpuData = {};
 
@@ -225,6 +226,7 @@ export class ProjectionGenerator {
 		this.iterationTime = 30;
 		this.angleThreshold = 50;
 		this.includeIntersectionEdges = true;
+		this.useWebGPU = true;
 
 	}
 
@@ -325,7 +327,7 @@ export class ProjectionGenerator {
 
 		yield;
 
-		const collector = new ProjectedEdgeCollector( scene );
+		const collector = new ProjectedEdgeCollector( scene, this.useWebGPU );
 		collector.iterationTime = iterationTime;
 
 		onProgress( 'Building BVH & computing overlaps' );

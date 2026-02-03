@@ -11,6 +11,7 @@ const params = {
 	logging: true,
 	displayDrawThroughProjection: false,
 	includeIntersectionEdges: false,
+	useWebGPU: true,
 	rotate: () => {
 
 		const randomQuaternion = new THREE.Quaternion();
@@ -122,7 +123,7 @@ const allMeshes = new THREE.Group();
 world.scene.three.add(allMeshes);
 allMeshes.rotation.x = Math.PI / 4;
 allMeshes.rotation.y = Math.PI / 4;
-allMeshes.rotation.z = Math.PI / 4;
+// allMeshes.rotation.z = Math.PI / 4;
 
 
 const material = new THREE.MeshLambertMaterial({
@@ -206,6 +207,7 @@ world.scene.three.add(projection, drawThroughProjection);
 
 gui = new GUI();
 gui.add(params, 'includeIntersectionEdges');
+gui.add(params, 'useWebGPU');
 gui.add(params, 'logging').onChange(() => {
 	Logger.enabled = params.logging;
 });
@@ -283,6 +285,7 @@ function* updateEdges(runTime = 30) {
 	generator.iterationTime = runTime;
 	generator.angleThreshold = ANGLE_THRESHOLD;
 	generator.includeIntersectionEdges = params.includeIntersectionEdges;
+	generator.useWebGPU = params.useWebGPU;
 	console.log(generator.includeIntersectionEdges);
 
 	const collection = yield* generator.generate(allMeshes, {

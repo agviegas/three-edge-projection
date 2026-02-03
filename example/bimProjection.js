@@ -121,6 +121,7 @@ const model = await loadModel("/school_arq.frag");
 const allMeshes = new THREE.Group();
 world.scene.three.add(allMeshes);
 allMeshes.rotation.x = Math.PI / 4;
+allMeshes.rotation.y = Math.PI / 4;
 allMeshes.rotation.z = Math.PI / 4;
 
 

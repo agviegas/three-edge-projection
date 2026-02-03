@@ -346,7 +346,6 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 				// Calculate triangle Y bounds (for early culling)
 				const highestTriangleY = max( v0.y, max( v1.y, v2.y ) );
-				const lowestTriangleY = min( v0.y, min( v1.y, v2.y ) );
 
 				// Loop over edges in this group
 				Loop( { start: int( 0 ), end: edgeCount.toInt(), type: 'int', condition: '<', name: 'edgeIdx' }, ( { edgeIdx } ) => {
@@ -367,21 +366,14 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 						edgesData.element( edgeDataOffset.add( 5 ) )
 					);
 
-					// Calculate edge Y bounds
-					const lowestLineY = min( edgeStart.y, edgeEnd.y );
-					const highestLineY = max( edgeStart.y, edgeEnd.y );
-
 					// Y-bounds culling: skip if triangle is completely below the line
 					// (triangle's highest Y is at or below line's lowest Y)
+					const lowestLineY = min( edgeStart.y, edgeEnd.y );
 					If( highestTriangleY.lessThanEqual( lowestLineY ), () => {
 
 						Continue();
 
 					} );
-
-					// Fast path: if the entire line is below the triangle's lowest point,
-					// no trimming needed - the whole line is "beneath" the triangle plane
-					const lineFullyBelow = highestLineY.lessThan( lowestTriangleY );
 
 					// Calculate triangle plane (normal already computed, need constant d)
 					// Plane equation: normal · p + d = 0, so d = -normal · v0
@@ -399,43 +391,59 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 					const startDist = adjustedNormal.dot( edgeStart ).add( adjustedD );
 					const endDist = adjustedNormal.dot( edgeEnd ).add( adjustedD );
 
-					// Check positions relative to plane
-					const isStartBelow = startDist.lessThan( float( EPSILON ).negate() );
-					const isEndBelow = endDist.lessThan( float( EPSILON ).negate() );
+					// Check positions relative to plane (match CPU: no epsilon for "below" check)
+					const isStartBelow = startDist.lessThan( 0 );
+					const isEndBelow = endDist.lessThan( 0 );
+					const isStartOnPlane = abs( startDist ).lessThan( float( EPSILON ) );
 					const bothAbove = isStartBelow.not().and( isEndBelow.not() );
-					const bothBelow = isStartBelow.and( isEndBelow );
 
-					// Skip if both endpoints are above the plane (or on it)
-					If( bothAbove, () => {
+					// Check if line is coplanar with the plane (parallel)
+					// denominator = endDist - startDist; if ~0, line is parallel to plane
+					const denominator = endDist.sub( startDist );
+					const isCoplanar = abs( denominator ).lessThan( float( EPSILON ) );
+
+					// Handle coplanar case: if line is parallel to plane
+					// - if start is on plane or above, skip (no occlusion)
+					// - if start is below plane, use entire line
+					const coplanarSkip = isCoplanar.and( isStartOnPlane.or( isStartBelow.not() ) );
+					If( coplanarSkip, () => {
+
+						Continue();
+
+					} );
+
+					// Skip if both endpoints are above the plane (and not coplanar below)
+					If( bothAbove.and( isCoplanar.not() ), () => {
 
 						Continue();
 
 					} );
 
 					// Determine the trimmed line segment (portion below the plane)
-					// If both below OR line fully below triangle's Y-range, use original line
+					// For coplanar lines below the plane, use the original line
 					// Otherwise, find intersection and clip
 
 					// Calculate intersection parameter t where line crosses plane
 					// t = -startDist / (endDist - startDist)
-					const denominator = endDist.sub( startDist );
+					// Use safe division (coplanar case already handled above)
 					const t = startDist.negate().div( denominator );
 
-					// Calculate intersection point
+					// Calculate intersection point (only valid if not coplanar)
 					const intersectionPoint = mix( edgeStart, edgeEnd, t );
 
 					// Determine trimmed line endpoints
+					// If coplanar (and below plane, since we skipped coplanar above cases), use original
 					// If start is below, keep start; otherwise use intersection
 					// If end is below, keep end; otherwise use intersection
 					const trimmedStart = vec3(
-						select( isStartBelow, edgeStart.x, intersectionPoint.x ),
-						select( isStartBelow, edgeStart.y, intersectionPoint.y ),
-						select( isStartBelow, edgeStart.z, intersectionPoint.z )
+						select( isCoplanar.or( isStartBelow ), edgeStart.x, intersectionPoint.x ),
+						select( isCoplanar.or( isStartBelow ), edgeStart.y, intersectionPoint.y ),
+						select( isCoplanar.or( isStartBelow ), edgeStart.z, intersectionPoint.z )
 					);
 					const trimmedEnd = vec3(
-						select( isEndBelow, edgeEnd.x, intersectionPoint.x ),
-						select( isEndBelow, edgeEnd.y, intersectionPoint.y ),
-						select( isEndBelow, edgeEnd.z, intersectionPoint.z )
+						select( isCoplanar.or( isEndBelow ), edgeEnd.x, intersectionPoint.x ),
+						select( isCoplanar.or( isEndBelow ), edgeEnd.y, intersectionPoint.y ),
+						select( isCoplanar.or( isEndBelow ), edgeEnd.z, intersectionPoint.z )
 					);
 
 					// Skip if trimmed line is degenerate (too short)
@@ -477,12 +485,26 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 					// getProjectedLineOverlap - project to Y=0 and find overlap
 					// ============================================
 
-					// Flatten triangle and line to Y=0
+					// Flatten triangle and TRIMMED line to Y=0
 					const flatV0 = vec3( v0.x, float( 0 ), v0.z );
 					const flatV1 = vec3( v1.x, float( 0 ), v1.z );
 					const flatV2 = vec3( v2.x, float( 0 ), v2.z );
 					const flatLineStart = vec3( trimmedStart.x, float( 0 ), trimmedStart.z );
 					const flatLineEnd = vec3( trimmedEnd.x, float( 0 ), trimmedEnd.z );
+
+					// Also flatten the ORIGINAL edge to Y=0 (for final overlap calculation)
+					const flatOrigStart = vec3( edgeStart.x, float( 0 ), edgeStart.z );
+					const flatOrigEnd = vec3( edgeEnd.x, float( 0 ), edgeEnd.z );
+					const flatOrigDelta = flatOrigEnd.sub( flatOrigStart );
+					const flatOrigDistSq = flatOrigDelta.dot( flatOrigDelta );
+
+					// Check if flattened original edge is degenerate
+					If( flatOrigDistSq.lessThan( float( EPSILON ) ), () => {
+
+						Continue();
+
+					} );
+					const flatOrigDist = flatOrigDistSq.sqrt();
 
 					// Check if flattened triangle is degenerate
 					const flatEdge1 = flatV1.sub( flatV0 );
@@ -495,7 +517,7 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
-					// Calculate line direction and length
+					// Calculate trimmed line direction and length
 					const flatLineDelta = flatLineEnd.sub( flatLineStart );
 					const flatLineDistSq = flatLineDelta.dot( flatLineDelta );
 					If( flatLineDistSq.lessThan( float( EPSILON ) ), () => {
@@ -505,6 +527,9 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 					} );
 					const flatLineDist = flatLineDistSq.sqrt();
 					const lineDir = flatLineDelta.div( flatLineDist );
+
+					// Direction of the original flattened edge (for projecting overlaps)
+					const origDir = flatOrigDelta.div( flatOrigDist );
 
 					// Create orthogonal plane along the line
 					// ortho = lineDir × flatNormal (normalized)
@@ -689,9 +714,9 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
-					// Calculate 1D positions along the line
-					const s1 = float( 0 ); // line start at 0
-					const e1 = flatLineDist; // line end at distance
+					// Calculate 1D positions along the trimmed line direction
+					const s1 = float( 0 ); // trimmed line start at 0
+					const e1 = flatLineDist; // trimmed line end at distance
 					const s2 = triS.sub( flatLineStart ).dot( lineDir );
 					const e2 = triE.sub( flatLineStart ).dot( lineDir );
 
@@ -703,9 +728,31 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 					} );
 
-					// Calculate overlap range (normalized 0-1 along original line)
-					const overlapStartVal = max( s1, s2 ).div( flatLineDist );
-					const overlapEndVal = min( e1, e2 ).div( flatLineDist );
+					// Calculate overlap bounds in trimmed line coordinates
+					const overlapStartDist = max( s1, s2 );
+					const overlapEndDist = min( e1, e2 );
+
+					// Convert overlap points to 2D positions
+					// overlapPoint = flatLineStart + overlapDist * lineDir
+					const overlapStartPt = flatLineStart.add( lineDir.mul( overlapStartDist ) );
+					const overlapEndPt = flatLineStart.add( lineDir.mul( overlapEndDist ) );
+
+					// Project overlap points onto the ORIGINAL flattened edge
+					// and normalize by original edge length
+					const overlapStartRaw = overlapStartPt.sub( flatOrigStart ).dot( origDir ).div( flatOrigDist );
+					const overlapEndRaw = overlapEndPt.sub( flatOrigStart ).dot( origDir ).div( flatOrigDist );
+
+					// Clamp to [0, 1] range (matches CPU getOverlapRange behavior)
+					const overlapStartVal = max( float( 0 ), min( float( 1 ), overlapStartRaw ) );
+					const overlapEndVal = max( float( 0 ), min( float( 1 ), overlapEndRaw ) );
+
+					// Skip if the overlap is too small after clamping
+					const overlapSize = abs( overlapEndVal.sub( overlapStartVal ) );
+					If( overlapSize.lessThanEqual( float( DIST_EPSILON ) ), () => {
+
+						Continue();
+
+					} );
 
 					// Atomically allocate a slot in the output buffer
 					const overlapIdx = atomicAdd( overlapCounter.element( 0 ), 1 );

@@ -3,7 +3,7 @@ import * as THREEWEBGPU from 'three/webgpu';
 import { float, Fn, If, Loop, instancedArray, instanceIndex, uint, int, vec3, vec4, mat4, Continue, max, min, cross, normalize, abs, select, mix, atomicAdd } from 'three/tsl';
 import { insertOverlap } from './getProjectedOverlaps.js';
 
-const EPSILON = 1e-10; // Threshold for floating point comparisons
+const EPSILON = 1e-5; // Threshold for floating point comparisons
 const AREA_EPSILON = 1e-16; // Threshold for degenerate triangle detection
 const DIST_EPSILON = 1e-16; // Threshold for distance comparisons in overlap calculation
 

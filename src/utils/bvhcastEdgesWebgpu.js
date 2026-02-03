@@ -827,6 +827,10 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 
 	}
 
+	// Dispose renderer (cleans up all GPU resources including buffers)
+	renderer.dispose();
+	_renderer = null;
+
 	const totalTime = bufferTime + shaderBuildTime + gpuTime + readbackTime + mergeTime;
 	console.log( `WebGPU timing breakdown (total: ${totalTime.toFixed( 1 )}ms):` );
 	console.log( `  Buffer creation: ${bufferTime.toFixed( 1 )}ms` );

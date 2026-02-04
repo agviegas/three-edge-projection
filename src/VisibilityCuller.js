@@ -7,7 +7,7 @@ import {
 	Vector4,
 	OrthographicCamera,
 	Color,
-	Mesh,
+	Scene,
 	NoBlending,
 } from 'three';
 
@@ -66,9 +66,6 @@ export class VisibilityCuller {
 		const size = new Vector3();
 		const camera = new OrthographicCamera();
 		const box = new Box3();
-		const idMesh = new Mesh( undefined, new IDMaterial() );
-		idMesh.matrixAutoUpdate = false;
-		idMesh.matrixWorldAutoUpdate = false;
 
 		const target = new WebGLRenderTarget( 1, 1 );
 
@@ -97,6 +94,29 @@ export class VisibilityCuller {
 		camera.far = ( box.max.y - box.min.y ) + camera.near;
 		camera.position.y = box.max.y + camera.near;
 
+		// Create a scene with all objects using ID materials
+		const idScene = new Scene();
+		const originalMaterials = new Map();
+		const idMaterials = [];
+
+		for ( let i = 0; i < objects.length; i ++ ) {
+
+			const object = objects[ i ];
+
+			// Store original material
+			originalMaterials.set( object, object.material );
+
+			// Create and assign ID material
+			const idMaterial = new IDMaterial();
+			idMaterial.objectId = i;
+			idMaterials.push( idMaterial );
+			object.material = idMaterial;
+
+			// Add to ID scene
+			idScene.add( object );
+
+		}
+
 		// save render state
 		const color = renderer.getClearColor( new Color() );
 		const alpha = renderer.getClearAlpha();
@@ -104,7 +124,7 @@ export class VisibilityCuller {
 		const autoClear = renderer.autoClear;
 
 		// render ids
-		renderer.autoClear = false;
+		renderer.autoClear = true;
 		renderer.setClearColor( 0, 0 );
 		renderer.setRenderTarget( target );
 
@@ -139,18 +159,9 @@ export class VisibilityCuller {
 				camera.bottom = - halfHeight;
 
 				camera.updateProjectionMatrix();
-				renderer.clear();
 
-				for ( let i = 0; i < objects.length; i ++ ) {
-
-					const object = objects[ i ];
-					idMesh.matrixWorld.copy( object.matrixWorld );
-					idMesh.geometry = object.geometry;
-
-					idMesh.material.objectId = i;
-					renderer.render( idMesh, camera );
-
-				}
+				// Single render call for all objects in this tile
+				renderer.render( idScene, camera );
 
 				const buffer = await renderer.readRenderTargetPixelsAsync( target, 0, 0, target.width, target.height, readBuffer );
 
@@ -169,13 +180,26 @@ export class VisibilityCuller {
 
 		}
 
+		// Restore original materials and remove from ID scene
+		for ( const object of objects ) {
+
+			object.material = originalMaterials.get( object );
+			idScene.remove( object );
+
+		}
+
 		// reset render state
 		renderer.setClearColor( color, alpha );
 		renderer.setRenderTarget( renderTarget );
 		renderer.autoClear = autoClear;
 
 		// dispose of intermediate values
-		idMesh.material.dispose();
+		for ( const material of idMaterials ) {
+
+			material.dispose();
+
+		}
+
 		target.dispose();
 
 
@@ -189,8 +213,15 @@ export class VisibilityCuller {
 
 class IDMaterial extends ShaderMaterial {
 
+	get objectId() {
+
+		return this._objectId;
+
+	}
+
 	set objectId( v ) {
 
+		this._objectId = v;
 		encodeId( v, this.uniforms.objectId.value );
 
 	}
@@ -227,6 +258,7 @@ class IDMaterial extends ShaderMaterial {
 
 		} );
 
+		this._objectId = 0;
 		this.setValues( params );
 
 	}

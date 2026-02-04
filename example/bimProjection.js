@@ -112,7 +112,7 @@ async function loadModel(
 	return model;
 }
 
-const model = await loadModel("/school_arq.frag");
+const model = await loadModel("/frags/metal.frag");
 
 // const clipper = components.get(OBC.Clipper);
 // const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));

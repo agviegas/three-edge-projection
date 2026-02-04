@@ -47,11 +47,13 @@ export function getEdgesTrianglesGroups( edgesBvh, bvh, mesh, webgpuData, meshIn
 
 }
 
+// TODO: Make this a parameter
+// TODO: Count how many edges each mesh has and use that to determine the batch size
 // Number of meshes to process in each GPU batch
 // We concatenate mesh data within each batch to stay under WebGPU's 8 storage buffer limit
 // Larger batches = fewer readbacks = better performance
 // Using a very large number to process all meshes in a single batch when possible
-const MESHES_PER_BATCH = 10000;
+const MESHES_PER_BATCH = 1000;
 
 // Group info layout: [edgeOffset, edgeCount, triOffset, triCount, meshIdx] per group
 const GROUP_INFO_STRIDE = 5;

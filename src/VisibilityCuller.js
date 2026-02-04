@@ -94,8 +94,8 @@ export class VisibilityCuller {
 
 		// set the camera bounds
 		camera.rotation.x = - Math.PI / 2;
-		camera.far = box.max.y - box.min.y;
-		camera.position.y = box.max.y;
+		camera.far = ( box.max.y - box.min.y ) + camera.near;
+		camera.position.y = box.max.y + camera.near;
 
 		// save render state
 		const color = renderer.getClearColor( new Color() );
@@ -111,16 +111,32 @@ export class VisibilityCuller {
 		const readBuffer = new Uint8Array( target.width * target.height * 4 );
 		const visibleSet = new Set();
 		const stepX = size.x / tilesX;
-		const stepY = size.z / tilesY;
-		for ( let x = 0; x < tilesX; x ++ ) {
+		const stepZ = size.z / tilesY;
+		for ( let tx = 0; tx < tilesX; tx ++ ) {
 
-			for ( let y = 0; y < tilesY; y ++ ) {
+			for ( let ty = 0; ty < tilesY; ty ++ ) {
 
-				camera.left = box.min.x + stepX * x;
-				camera.bottom = box.min.z + stepY * y;
+				// Calculate tile bounds in world space
+				const tileMinX = box.min.x + stepX * tx;
+				const tileMaxX = tileMinX + stepX;
+				const tileMinZ = box.min.z + stepZ * ty;
+				const tileMaxZ = tileMinZ + stepZ;
 
-				camera.right = camera.left + stepX;
-				camera.top = camera.bottom + stepY;
+				// Position camera at center of this tile
+				const tileCenterX = ( tileMinX + tileMaxX ) / 2;
+				const tileCenterZ = ( tileMinZ + tileMaxZ ) / 2;
+				camera.position.set( tileCenterX, box.max.y, tileCenterZ );
+
+				// Set symmetric frustum around camera center
+				// For a camera looking down (-90° X rotation):
+				// - camera left/right map to world X
+				// - camera top/bottom map to world -Z/+Z (inverted)
+				const halfWidth = stepX / 2;
+				const halfHeight = stepZ / 2;
+				camera.left = - halfWidth;
+				camera.right = halfWidth;
+				camera.top = halfHeight;
+				camera.bottom = - halfHeight;
 
 				camera.updateProjectionMatrix();
 				renderer.clear();

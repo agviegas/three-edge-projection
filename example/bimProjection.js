@@ -101,7 +101,9 @@ async function loadModel(
 		raw,
 	});
 
-	// world.scene.three.add(model.object);
+	world.scene.three.add(model.object);
+	model.object.rotation.x = Math.PI / 4;
+	model.object.rotation.y = Math.PI / 4;
 	const now = performance.now();
 	await fragments.core.update(true);
 	const then = performance.now();
@@ -120,9 +122,9 @@ const model = await loadModel("/school_arq.frag");
 // world.scene.three.add(projectedMeshes);
 
 const allMeshes = new THREE.Group();
-world.scene.three.add(allMeshes);
-allMeshes.rotation.x = Math.PI / 4;
-allMeshes.rotation.y = Math.PI / 4;
+// world.scene.three.add(allMeshes);
+// allMeshes.rotation.x = Math.PI / 4;
+// allMeshes.rotation.y = Math.PI / 4;
 // allMeshes.rotation.z = Math.PI / 4;
 
 
@@ -168,6 +170,9 @@ for (const itemId in allMeshesData) {
 		const mesh = new THREE.Mesh(geometry, material);
 		mesh.userData.localId = geomData.localId;
 		mesh.applyMatrix4(geomData.transform);
+		// TODO: Applying this matrix to allMeshes hurts the performance a lot
+		// What if we processed geometries with no transformation at all? (by parts to prevent memory bloat)
+		mesh.applyMatrix4(model.object.matrixWorld);
 		mesh.updateWorldMatrix(true, true);
 		allMeshes.add(mesh);
 	}
@@ -195,13 +200,41 @@ allMeshes.traverse(c => {
 
 });
 
-// // center model
-// const box = new THREE.Box3();
-// box.setFromObject(projectedMeshes, true);
+// Compute bounding box of allMeshes
+allMeshes.updateWorldMatrix(true, true);
+const box = new THREE.Box3();
+allMeshes.traverse((child) => {
+	if (child.isMesh && child.geometry) {
+		child.updateWorldMatrix(false, false);
+		box.expandByObject(child, true);
+	}
+});
+
+const size = box.getSize(new THREE.Vector3());
+const center = box.getCenter(new THREE.Vector3());
+
+// Create white ground plane on top of the bounding box (plus 3m offset)
+const planeHeight = box.max.y + 3;
+const planeSize = Math.max(size.x, size.z) * 1.5;
+const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
+const planeMaterial = new THREE.MeshBasicMaterial({
+	color: 0xffffff,
+	transparent: true,
+	opacity: 0.8,
+});
+const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+plane.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+plane.position.set(center.x, planeHeight, center.z);
+world.scene.three.add(plane);
 
 // create projection display mesh
-projection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x030303, depthTest: false }));
-drawThroughProjection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xcacaca, depthWrite: false }));
+// Position projection at plane height + 1 cm offset
+const projectionmaterial = new THREE.LineBasicMaterial({ color: "black", transparent: true });
+projection = new THREE.LineSegments(new THREE.BufferGeometry(), projectionmaterial);
+projection.position.y = planeHeight + 0.01;
+
+drawThroughProjection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xcacaca, depthTest: false }));
+drawThroughProjection.position.y = planeHeight + 0.01;
 drawThroughProjection.renderOrder = - 1;
 world.scene.three.add(projection, drawThroughProjection);
 
@@ -230,13 +263,6 @@ world.renderer.onBeforeUpdate.add(() => {
 	// projectedMeshes.visible = params.displayModel;
 	drawThroughProjection.visible = params.displayDrawThroughProjection;
 
-});
-
-const projectedMaterial = new THREE.MeshLambertMaterial({
-	color: new THREE.Color("red"),
-	transparent: true,
-	opacity: 0.5,
-	visible: false,
 });
 
 

@@ -57,6 +57,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 					const faceUp = _tri.plane.normal.dot( UP_VECTOR ) !== inverted;
 					if ( faceUp === ( side === BackSide ) ) {
 
+						if ( stats ) stats.backFaceCulled += edgeCount;
 						continue;
 
 					}
@@ -76,6 +77,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 					// Skip if triangle is completely below the line
 					if ( highestTriangleY <= lowestLineY ) {
 
+						if ( stats ) stats.yBoundsCulled ++;
 						continue;
 
 					}
@@ -83,6 +85,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 					// Skip if this line lies on a triangle edge
 					if ( isLineTriangleEdge( _tri, _line ) ) {
 
+						if ( stats ) stats.triangleEdgeCulled ++;
 						continue;
 
 					}
@@ -94,6 +97,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 					} else if ( ! trimToBeneathTriPlane( _tri, _line, _beneathLine ) ) {
 
+						if ( stats ) stats.planeTrimCulled ++;
 						continue;
 
 					}
@@ -101,6 +105,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 					// Cull overly small edges
 					if ( _beneathLine.distance() < DIST_THRESHOLD ) {
 
+						if ( stats ) stats.distThresholdCulled ++;
 						continue;
 
 					}
@@ -110,6 +115,10 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 						if ( stats ) stats.used ++;
 						appendOverlapRange( _line, _overlapLine, hiddenOverlapMap[ e ] );
+
+					} else {
+
+						if ( stats ) stats.noOverlapCulled ++;
 
 					}
 

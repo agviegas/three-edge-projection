@@ -116,6 +116,17 @@ class ProjectedEdgeCollector {
 
 		}
 
+		// Count total triangles across all meshes
+		let totalTriangles = 0;
+		for ( let i = 0; i < meshes.length; i ++ ) {
+
+			const geometry = meshes[ i ].geometry;
+			totalTriangles += geometry.index
+				? geometry.index.count / 3
+				: geometry.attributes.position.count / 3;
+
+		}
+
 		// initialize hidden line object
 		const hiddenOverlapMap = {};
 		for ( let i = 0; i < edges.length; i ++ ) {
@@ -132,7 +143,18 @@ class ProjectedEdgeCollector {
 		Logger.startStep( 'BVHcast overlaps' );
 		time = performance.now();
 
-		const bvhStats = { candidates: 0, used: 0 };
+		const bvhStats = {
+			candidates: 0,
+			backFaceCulled: 0,
+			yBoundsCulled: 0,
+			triangleEdgeCulled: 0,
+			planeTrimCulled: 0,
+			distThresholdCulled: 0,
+			noOverlapCulled: 0,
+			used: 0,
+			totalEdges: edges.length,
+			totalTriangles: totalTriangles,
+		};
 		const useWebGpu = this.useWebGPU;
 		const size = 99999999;
 		const webgpuData = {};
@@ -197,11 +219,35 @@ class ProjectedEdgeCollector {
 
 		}
 
-		Logger.setStat( 'BVH candidate pairs (edge × triangle)', bvhStats.candidates.toLocaleString() );
-		Logger.setStat( 'Pairs producing overlaps', bvhStats.used.toLocaleString() );
+		const bruteForcePairs = bvhStats.totalEdges * bvhStats.totalTriangles;
+		Logger.setStat( 'Total edges', bvhStats.totalEdges.toLocaleString() );
+		Logger.setStat( 'Total triangles', bvhStats.totalTriangles.toLocaleString() );
+		Logger.setStat( 'Brute-force pairs (edges × triangles)', bruteForcePairs.toLocaleString() );
+		Logger.setStat( 'BVH candidate pairs', bvhStats.candidates.toLocaleString() );
+
+		if ( bruteForcePairs > 0 ) {
+
+			Logger.setStat( 'BVH reduction', ( bvhStats.candidates / bruteForcePairs * 100 ).toFixed( 3 ) + '% of brute-force' );
+
+		}
+
 		if ( bvhStats.candidates > 0 ) {
 
-			Logger.setStat( 'BVH efficiency (used/candidates)', ( bvhStats.used / bvhStats.candidates * 100 ).toFixed( 3 ) + '%' );
+			const c = bvhStats.candidates;
+			const pct = v => ( v / c * 100 ).toFixed( 2 ) + '%';
+
+			if ( ! useWebGpu ) {
+
+				Logger.setStat( 'Rejected: back-face culling', bvhStats.backFaceCulled.toLocaleString() + ' (' + pct( bvhStats.backFaceCulled ) + ')' );
+				Logger.setStat( 'Rejected: Y-bounds (tri below edge)', bvhStats.yBoundsCulled.toLocaleString() + ' (' + pct( bvhStats.yBoundsCulled ) + ')' );
+				Logger.setStat( 'Rejected: edge lies on triangle', bvhStats.triangleEdgeCulled.toLocaleString() + ' (' + pct( bvhStats.triangleEdgeCulled ) + ')' );
+				Logger.setStat( 'Rejected: line above tri plane', bvhStats.planeTrimCulled.toLocaleString() + ' (' + pct( bvhStats.planeTrimCulled ) + ')' );
+				Logger.setStat( 'Rejected: trimmed edge too small', bvhStats.distThresholdCulled.toLocaleString() + ' (' + pct( bvhStats.distThresholdCulled ) + ')' );
+				Logger.setStat( 'Rejected: no projected overlap', bvhStats.noOverlapCulled.toLocaleString() + ' (' + pct( bvhStats.noOverlapCulled ) + ')' );
+
+			}
+
+			Logger.setStat( 'Producing overlaps', bvhStats.used.toLocaleString() + ' (' + pct( bvhStats.used ) + ')' );
 
 		}
 

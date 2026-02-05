@@ -67,6 +67,16 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 				const highestTriangleY = Math.max( a.y, b.y, c.y );
 				const lowestTriangleY = Math.min( a.y, b.y, c.y );
 
+				// Precompute upward-facing plane normal and constant for
+				// cheap "both endpoints above plane" test inside the edge loop.
+				const pn = _tri.plane.normal;
+				let plnx = pn.x, plny = pn.y, plnz = pn.z, plnc = _tri.plane.constant;
+				if ( plny < 0 ) {
+
+					plnx = - plnx; plny = - plny; plnz = - plnz; plnc = - plnc;
+
+				}
+
 				for ( let e = edgeOffset, le = edgeCount + edgeOffset; e < le; e ++ ) {
 
 					const _line = edges[ e ];
@@ -85,8 +95,6 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 					// Oriented XZ overlap test: project triangle onto edge's
 					// local axes (direction + perpendicular) for a tight 2D check.
-					// dir = normalized edge direction in XZ
-					// perp = 90° rotation of dir: (-dz, dx)
 					const dx = _line.end.x - _line.start.x;
 					const dz = _line.end.z - _line.start.z;
 					const lenSq = dx * dx + dz * dz;
@@ -99,7 +107,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 						const perpX = - dirZ;
 						const perpZ = dirX;
 
-						// Project triangle vertices onto dir axis (relative to edge start)
+						// Project triangle vertices relative to edge start
 						const oax = a.x - _line.start.x;
 						const oaz = a.z - _line.start.z;
 						const obx = b.x - _line.start.x;
@@ -107,12 +115,11 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 						const ocx = c.x - _line.start.x;
 						const ocz = c.z - _line.start.z;
 
+						// Dir axis: edge spans [0, len]
 						const da = oax * dirX + oaz * dirZ;
 						const db = obx * dirX + obz * dirZ;
 						const dc = ocx * dirX + ocz * dirZ;
-
-						// Edge spans [0, len] on the dir axis
-						const len = Math.sqrt( lenSq );
+						const len = 1 / invLen; // == Math.sqrt(lenSq) without a second sqrt
 						const triMinDir = Math.min( da, db, dc );
 						const triMaxDir = Math.max( da, db, dc );
 
@@ -123,13 +130,10 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 						}
 
-						// Project triangle vertices onto perp axis
-						// Edge has zero width on perp, so it sits at perp=0
-						// Triangle must straddle perp=0 (min <= 0 && max >= 0)
+						// Perp axis: edge sits at perp=0, triangle must straddle it
 						const pa = oax * perpX + oaz * perpZ;
 						const pb = obx * perpX + obz * perpZ;
 						const pc = ocx * perpX + ocz * perpZ;
-
 						const triMinPerp = Math.min( pa, pb, pc );
 						const triMaxPerp = Math.max( pa, pb, pc );
 
@@ -139,6 +143,18 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 							continue;
 
 						}
+
+					}
+
+					// Quick "both above plane" check using precomputed plane.
+					// distanceToPoint = dot(normal, point) + constant
+					// If both >= 0 the edge is entirely above/on the plane → no occlusion.
+					const startDist = plnx * _line.start.x + plny * _line.start.y + plnz * _line.start.z + plnc;
+					const endDist = plnx * _line.end.x + plny * _line.end.y + plnz * _line.end.z + plnc;
+					if ( startDist >= 0 && endDist >= 0 ) {
+
+						if ( stats ) stats.planeTrimCulled ++;
+						continue;
 
 					}
 

@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:www.geeksforgeeks.org)",
+      "WebFetch(domain:wheger.tripod.com)"
     ]
   }
 }

@@ -147,6 +147,7 @@ class ProjectedEdgeCollector {
 			candidates: 0,
 			backFaceCulled: 0,
 			yBoundsCulled: 0,
+			xzBoundsCulled: 0,
 			triangleEdgeCulled: 0,
 			planeTrimCulled: 0,
 			distThresholdCulled: 0,
@@ -240,6 +241,7 @@ class ProjectedEdgeCollector {
 
 				Logger.setStat( 'Rejected: back-face culling', bvhStats.backFaceCulled.toLocaleString() + ' (' + pct( bvhStats.backFaceCulled ) + ')' );
 				Logger.setStat( 'Rejected: Y-bounds (tri below edge)', bvhStats.yBoundsCulled.toLocaleString() + ' (' + pct( bvhStats.yBoundsCulled ) + ')' );
+				Logger.setStat( 'Rejected: XZ-bounds (no 2D overlap)', bvhStats.xzBoundsCulled.toLocaleString() + ' (' + pct( bvhStats.xzBoundsCulled ) + ')' );
 				Logger.setStat( 'Rejected: edge lies on triangle', bvhStats.triangleEdgeCulled.toLocaleString() + ' (' + pct( bvhStats.triangleEdgeCulled ) + ')' );
 				Logger.setStat( 'Rejected: line above tri plane', bvhStats.planeTrimCulled.toLocaleString() + ' (' + pct( bvhStats.planeTrimCulled ) + ')' );
 				Logger.setStat( 'Rejected: trimmed edge too small', bvhStats.distThresholdCulled.toLocaleString() + ' (' + pct( bvhStats.distThresholdCulled ) + ')' );

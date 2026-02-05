@@ -66,6 +66,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 				const highestTriangleY = Math.max( a.y, b.y, c.y );
 				const lowestTriangleY = Math.min( a.y, b.y, c.y );
+
 				for ( let e = edgeOffset, le = edgeCount + edgeOffset; e < le; e ++ ) {
 
 					const _line = edges[ e ];
@@ -79,6 +80,65 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = nul
 
 						if ( stats ) stats.yBoundsCulled ++;
 						continue;
+
+					}
+
+					// Oriented XZ overlap test: project triangle onto edge's
+					// local axes (direction + perpendicular) for a tight 2D check.
+					// dir = normalized edge direction in XZ
+					// perp = 90° rotation of dir: (-dz, dx)
+					const dx = _line.end.x - _line.start.x;
+					const dz = _line.end.z - _line.start.z;
+					const lenSq = dx * dx + dz * dz;
+
+					if ( lenSq > 1e-20 ) {
+
+						const invLen = 1 / Math.sqrt( lenSq );
+						const dirX = dx * invLen;
+						const dirZ = dz * invLen;
+						const perpX = - dirZ;
+						const perpZ = dirX;
+
+						// Project triangle vertices onto dir axis (relative to edge start)
+						const oax = a.x - _line.start.x;
+						const oaz = a.z - _line.start.z;
+						const obx = b.x - _line.start.x;
+						const obz = b.z - _line.start.z;
+						const ocx = c.x - _line.start.x;
+						const ocz = c.z - _line.start.z;
+
+						const da = oax * dirX + oaz * dirZ;
+						const db = obx * dirX + obz * dirZ;
+						const dc = ocx * dirX + ocz * dirZ;
+
+						// Edge spans [0, len] on the dir axis
+						const len = Math.sqrt( lenSq );
+						const triMinDir = Math.min( da, db, dc );
+						const triMaxDir = Math.max( da, db, dc );
+
+						if ( triMaxDir < 0 || triMinDir > len ) {
+
+							if ( stats ) stats.xzBoundsCulled ++;
+							continue;
+
+						}
+
+						// Project triangle vertices onto perp axis
+						// Edge has zero width on perp, so it sits at perp=0
+						// Triangle must straddle perp=0 (min <= 0 && max >= 0)
+						const pa = oax * perpX + oaz * perpZ;
+						const pb = obx * perpX + obz * perpZ;
+						const pc = ocx * perpX + ocz * perpZ;
+
+						const triMinPerp = Math.min( pa, pb, pc );
+						const triMaxPerp = Math.max( pa, pb, pc );
+
+						if ( triMinPerp > 0 || triMaxPerp < 0 ) {
+
+							if ( stats ) stats.xzBoundsCulled ++;
+							continue;
+
+						}
 
 					}
 

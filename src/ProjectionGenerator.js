@@ -132,6 +132,7 @@ class ProjectedEdgeCollector {
 		Logger.startStep( 'BVHcast overlaps' );
 		time = performance.now();
 
+		const bvhStats = { candidates: 0, used: 0 };
 		const useWebGpu = this.useWebGPU;
 		const size = 99999999;
 		const webgpuData = {};
@@ -171,7 +172,7 @@ class ProjectedEdgeCollector {
 
 			} else {
 
-				bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap );
+				bvhcastEdges( edgesBvh, bvhs.get( mesh.geometry ), mesh, hiddenOverlapMap, bvhStats );
 
 			}
 
@@ -182,7 +183,7 @@ class ProjectedEdgeCollector {
 
 			// Wait for async WebGPU computation to complete
 			let webgpuFinished = false;
-			getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ).then( () => {
+			getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap, bvhStats ).then( () => {
 
 				webgpuFinished = true;
 
@@ -193,6 +194,14 @@ class ProjectedEdgeCollector {
 				yield;
 
 			}
+
+		}
+
+		Logger.setStat( 'BVH candidate pairs (edge × triangle)', bvhStats.candidates.toLocaleString() );
+		Logger.setStat( 'Pairs producing overlaps', bvhStats.used.toLocaleString() );
+		if ( bvhStats.candidates > 0 ) {
+
+			Logger.setStat( 'BVH efficiency (used/candidates)', ( bvhStats.used / bvhStats.candidates * 100 ).toFixed( 3 ) + '%' );
 
 		}
 

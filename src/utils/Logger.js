@@ -3,6 +3,7 @@
 
 let enabled = false;
 const stepTimes = {};
+const stats = {};
 let currentStep = null;
 let currentStepStart = 0;
 let totalStart = 0;
@@ -29,9 +30,21 @@ export const Logger = {
 
 		}
 
+		for ( const key in stats ) {
+
+			delete stats[ key ];
+
+		}
+
 		currentStep = null;
 		currentStepStart = 0;
 		totalStart = 0;
+
+	},
+
+	setStat( name, value ) {
+
+		stats[ name ] = value;
 
 	},
 
@@ -88,6 +101,17 @@ export const Logger = {
 
 			const pct = ( ( time / totalTime ) * 100 ).toFixed( 1 );
 			console.log( `  ${ step }: ${ time.toFixed( 1 ) }ms (${ pct }%)` );
+
+		}
+
+		if ( Object.keys( stats ).length > 0 ) {
+
+			console.log( '\n--- Stats ---' );
+			for ( const [ key, value ] of Object.entries( stats ) ) {
+
+				console.log( `  ${ key }: ${ value }` );
+
+			}
 
 		}
 

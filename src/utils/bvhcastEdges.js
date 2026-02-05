@@ -17,7 +17,7 @@ _tri.update = () => {
 
 };
 
-export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap ) {
+export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap, stats = null ) {
 
 	const { geometry, matrixWorld, material } = mesh;
 	const side = material.side;
@@ -27,6 +27,8 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap ) {
 	edgesBvh.bvhcast( bvh, matrixWorld, {
 
 		intersectsRanges: ( edgeOffset, edgeCount, meshOffset, meshCount ) => {
+
+			if ( stats ) stats.candidates += edgeCount * meshCount;
 
 			for ( let i = meshOffset, l = meshCount + meshOffset; i < l; i ++ ) {
 
@@ -106,6 +108,7 @@ export function bvhcastEdges( edgesBvh, bvh, mesh, hiddenOverlapMap ) {
 					// Calculate projected overlap and store in hiddenOverlapMap
 					if ( getProjectedLineOverlap( _beneathLine, _tri, _overlapLine ) ) {
 
+						if ( stats ) stats.used ++;
 						appendOverlapRange( _line, _overlapLine, hiddenOverlapMap[ e ] );
 
 					}

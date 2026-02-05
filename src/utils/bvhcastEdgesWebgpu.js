@@ -82,7 +82,7 @@ async function getRenderer() {
 
 }
 
-export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap ) {
+export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hiddenOverlapMap, stats = null ) {
 
 	const renderer = await getRenderer();
 
@@ -218,6 +218,8 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 			totalPairs += batchGroupsList[ i ].edgeCount * batchGroupsList[ i ].triCount;
 
 		}
+
+		if ( stats ) stats.candidates += totalPairs;
 
 		// Use 5% as safety margin, capped at MAX_OVERLAPS_PER_BATCH
 		// (empirically ~0.3% of pairs result in overlaps, but some batches have higher ratios up to ~4.5%)
@@ -787,6 +789,8 @@ export async function getBvhcastEdgesWebgpu( webgpuData, meshes, edgesBvh, hidde
 		const readbackStart = performance.now();
 		const counterBuffer = await renderer.getArrayBufferAsync( overlapCounter.value );
 		const overlapCount = new Uint32Array( counterBuffer )[ 0 ];
+
+		if ( stats ) stats.used += Math.min( overlapCount, batchOverlapCapacity );
 
 		console.log( `  Batch ${batchIdx + 1}: ${overlapCount} overlaps found` );
 

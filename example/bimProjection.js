@@ -112,7 +112,7 @@ async function loadModel(
 	return model;
 }
 
-const model = await loadModel("/frags/school_arq.frag");
+const model = await loadModel("/frags/metal.frag");
 
 // const clipper = components.get(OBC.Clipper);
 // const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));
@@ -220,7 +220,7 @@ const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
 const planeMaterial = new THREE.MeshBasicMaterial({
 	color: 0xffffff,
 	transparent: true,
-	opacity: 0.8,
+	opacity: 0.95,
 });
 const plane = new THREE.Mesh(planeGeometry, planeMaterial);
 plane.rotation.x = -Math.PI / 2; // Rotate to be horizontal
@@ -233,7 +233,7 @@ const projectionmaterial = new THREE.LineBasicMaterial({ color: "black", transpa
 projection = new THREE.LineSegments(new THREE.BufferGeometry(), projectionmaterial);
 projection.position.y = planeHeight + 0.01;
 
-drawThroughProjection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xcacaca, depthTest: false }));
+drawThroughProjection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0x444444, dashSize: 0.03, gapSize: 0.03, transparent: true }));
 drawThroughProjection.position.y = planeHeight + 0.01;
 drawThroughProjection.renderOrder = - 1;
 world.scene.three.add(projection, drawThroughProjection);
@@ -241,6 +241,7 @@ world.scene.three.add(projection, drawThroughProjection);
 gui = new GUI();
 gui.add(params, 'includeIntersectionEdges');
 gui.add(params, 'useWebGPU');
+gui.add(params, 'displayDrawThroughProjection');
 gui.add(params, 'logging').onChange(() => {
 	Logger.enabled = params.logging;
 });
@@ -332,6 +333,7 @@ function* updateEdges(runTime = 30) {
 	});
 	drawThroughProjection.geometry.dispose();
 	drawThroughProjection.geometry = collection.getHiddenLineGeometry();
+	drawThroughProjection.computeLineDistances();
 
 	projection.geometry.dispose();
 	projection.geometry = collection.getVisibleLineGeometry();

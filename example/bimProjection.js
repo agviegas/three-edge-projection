@@ -4,6 +4,7 @@ import { MeshBVH, SAH } from 'three-mesh-bvh';
 import * as OBC from '@thatopen/components';
 import { ProjectionGenerator, VisibilityCuller } from '..';
 import {Logger} from '../src/utils/Logger.js';
+import { localId } from 'three/tsl';
 
 
 const params = {
@@ -138,7 +139,22 @@ const allMeshesData = await model.getItemsGeometry(idsWithGeometry);
 
 const geometries = new Map();
 
+// Get category data to split edges by category
+const categoriesWithGeometry = await model.getItemsWithGeometryCategories() || [];
+const itemsByCat = await model.getItemsOfCategories(categoriesWithGeometry.map(cat => new RegExp(cat)));
+const catKeys = Object.keys(itemsByCat);
+const itemsCatIndex = new Map();
+let catIndex = 0;
+for(const cat in itemsByCat) {
+	for(const id of itemsByCat[cat]) {
+		itemsCatIndex.set(id, catIndex);
+	}
+	catIndex++;
+}
+
+
 for (const itemId in allMeshesData) {
+
 	const meshData = allMeshesData[itemId];
 	for (const geomData of meshData) {
 		if (
@@ -168,7 +184,10 @@ for (const itemId in allMeshesData) {
 		const geometry = geometries.get(representationId);
 
 		const mesh = new THREE.Mesh(geometry, material);
-		mesh.userData.localId = geomData.localId;
+		
+		const catIndex = itemsCatIndex.get(geomData.localId);
+		mesh.userData.category = catKeys[catIndex];
+
 		mesh.applyMatrix4(geomData.transform);
 		// TODO: Applying this matrix to allMeshes hurts the performance a lot
 		// What if we processed geometries with no transformation at all? (by parts to prevent memory bloat)
@@ -218,7 +237,7 @@ const planeHeight = box.max.y + 3;
 const planeSize = Math.max(size.x, size.z) * 1.5;
 const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
 const planeMaterial = new THREE.MeshBasicMaterial({
-	color: 0xffffff,
+	color: 0x000000,
 	transparent: true,
 	opacity: 0.95,
 });
@@ -229,8 +248,45 @@ world.scene.three.add(plane);
 
 // create projection display mesh
 // Position projection at plane height + 1 cm offset
-const projectionmaterial = new THREE.LineBasicMaterial({ color: "black", transparent: true });
-projection = new THREE.LineSegments(new THREE.BufferGeometry(), projectionmaterial);
+const GROUP_PALETTE = [
+	new THREE.Color(0xe6194b), new THREE.Color(0x3cb44b), new THREE.Color(0x4363d8),
+	new THREE.Color(0xf58231), new THREE.Color(0x911eb4), new THREE.Color(0x42d4f4),
+	new THREE.Color(0xf032e6), new THREE.Color(0xbfef45), new THREE.Color(0xfabed4),
+	new THREE.Color(0x469990), new THREE.Color(0xdcbeff), new THREE.Color(0x9a6324),
+	new THREE.Color(0x800000), new THREE.Color(0xaaffc3), new THREE.Color(0x808000),
+	new THREE.Color(0x000075), new THREE.Color(0xa9a9a9), new THREE.Color(0xffe119),
+	new THREE.Color(0xff6f61), new THREE.Color(0x6b5b95), new THREE.Color(0x88b04b),
+	new THREE.Color(0xf7cac9), new THREE.Color(0x92a8d1), new THREE.Color(0x955251),
+	new THREE.Color(0xb565a7), new THREE.Color(0x009b77), new THREE.Color(0xdd4124),
+	new THREE.Color(0x45b8ac), new THREE.Color(0xefc050), new THREE.Color(0x5b5ea6),
+	new THREE.Color(0x9b2335), new THREE.Color(0xdfcfbe), new THREE.Color(0x55b4b0),
+	new THREE.Color(0xe15d44), new THREE.Color(0x7fcdcd), new THREE.Color(0xbc243c),
+	new THREE.Color(0xc3447a), new THREE.Color(0x98b4d4), new THREE.Color(0xf0c05a),
+	new THREE.Color(0x6667ab), new THREE.Color(0xd2691e), new THREE.Color(0x2e8b57),
+	new THREE.Color(0xcd5c5c), new THREE.Color(0x4682b4), new THREE.Color(0xdaa520),
+	new THREE.Color(0x8b008b), new THREE.Color(0x556b2f), new THREE.Color(0xff4500),
+];
+
+function applyGroupColors(geometry) {
+	const groupAttr = geometry.getAttribute('group');
+	if (!groupAttr) return;
+
+	const vertexCount = geometry.getAttribute('position').count;
+	const colorArray = new Float32Array(vertexCount * 3);
+
+	for (let i = 0; i < vertexCount; i++) {
+		const groupIndex = Math.round(groupAttr.getX(i));
+		const color = GROUP_PALETTE[groupIndex % GROUP_PALETTE.length];
+		colorArray[i * 3] = color.r;
+		colorArray[i * 3 + 1] = color.g;
+		colorArray[i * 3 + 2] = color.b;
+	}
+
+	geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+}
+
+const projectionMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
+projection = new THREE.LineSegments(new THREE.BufferGeometry(), projectionMaterial);
 projection.position.y = planeHeight + 0.01;
 
 drawThroughProjection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0x444444, dashSize: 0.03, gapSize: 0.03, transparent: true }));
@@ -317,6 +373,7 @@ function* updateEdges(runTime = 30) {
 
 	const collection = yield* generator.generate(allMeshes, {
 		visibilityCuller: new VisibilityCuller(world.renderer.three, { pixelsPerMeter: 0.05 }),
+		groupFn: (mesh) => mesh.userData.category ?? 'default',
 		onProgress: (msg, tot, edges) => {
 
 			outputContainer.innerText = msg;
@@ -337,11 +394,9 @@ function* updateEdges(runTime = 30) {
 
 	projection.geometry.dispose();
 	projection.geometry = collection.getVisibleLineGeometry();
-	const geometry = projection.geometry;
+	applyGroupColors(projection.geometry);
 	const trimTime = window.performance.now() - timeStart;
 
-	projection.geometry.dispose();
-	projection.geometry = geometry;
 	outputContainer.innerText = `Generation time: ${trimTime.toFixed(2)}ms`;
 
 }

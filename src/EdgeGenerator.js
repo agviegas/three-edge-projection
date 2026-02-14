@@ -35,7 +35,7 @@ export class EdgeGenerator {
 
 	}
 
-	*getEdgesGenerator( geometry, resultEdges = [] ) {
+	*getEdgesGenerator( geometry, resultEdges = [], edgeMeshMap = null ) {
 
 		const { projectionDirection, thresholdAngle, iterationTime } = this;
 		if ( geometry.isObject3D ) {
@@ -83,6 +83,16 @@ export class EdgeGenerator {
 
 				}
 
+				if ( edgeMeshMap !== null ) {
+
+					for ( let i = 0; i < results.length; i ++ ) {
+
+						edgeMeshMap.push( mesh );
+
+					}
+
+				}
+
 			}
 
 			return resultEdges;
@@ -113,7 +123,7 @@ export class EdgeGenerator {
 
 	}
 
-	*getIntersectionEdgesGenerator( geometry, resultEdges = [] ) {
+	*getIntersectionEdgesGenerator( geometry, resultEdges = [], edgeMeshMap = null ) {
 
 		const { iterationTime } = this;
 		if ( geometry.isObject3D ) {
@@ -173,6 +183,16 @@ export class EdgeGenerator {
 					for ( let i = 0; i < results.length; i ++ ) {
 
 						resultEdges.push( results[ i ] );
+
+					}
+
+					if ( edgeMeshMap !== null ) {
+
+						for ( let i = 0; i < results.length; i ++ ) {
+
+							edgeMeshMap.push( meshA );
+
+						}
 
 					}
 

@@ -20,7 +20,7 @@ import { getBvhcastEdgesWebgpu, getEdgesTrianglesGroups } from './utils/bvhcastE
 // generator so there's no risk of overwriting another tasks data
 const UP_VECTOR = /* @__PURE__ */ new Vector3( 0, 1, 0 );
 
-function toLineGeometry( edges ) {
+function toLineGeometry( edges, groupIndices = null ) {
 
 	const edgeArray = new Float32Array( edges.length * 6 );
 	let c = 0;
@@ -39,6 +39,22 @@ function toLineGeometry( edges ) {
 	const edgeGeom = new BufferGeometry();
 	const edgeBuffer = new BufferAttribute( edgeArray, 3, true );
 	edgeGeom.setAttribute( 'position', edgeBuffer );
+
+	if ( groupIndices ) {
+
+		// two vertices per line segment, both get the same group index
+		const groupArray = new Float32Array( edges.length * 2 );
+		for ( let i = 0, l = groupIndices.length; i < l; i ++ ) {
+
+			groupArray[ i * 2 ] = groupIndices[ i ];
+			groupArray[ i * 2 + 1 ] = groupIndices[ i ];
+
+		}
+
+		edgeGeom.setAttribute( 'group', new BufferAttribute( groupArray, 1 ) );
+
+	}
+
 	return edgeGeom;
 
 }
@@ -51,6 +67,10 @@ class ProjectedEdgeCollector {
 		this.bvhs = new Map();
 		this.visibleEdges = [];
 		this.hiddenEdges = [];
+		this.visibleGroupIndices = [];
+		this.hiddenGroupIndices = [];
+		this.groupKeyToIndex = null;
+		this.hasGroups = false;
 		this.iterationTime = 30;
 		this.useWebGPU = useWebGPU;
 
@@ -60,19 +80,29 @@ class ProjectedEdgeCollector {
 
 		this.visibleEdges.length = 0;
 		this.hiddenEdges.length = 0;
+		this.visibleGroupIndices.length = 0;
+		this.hiddenGroupIndices.length = 0;
+		this.groupKeyToIndex = null;
+		this.hasGroups = false;
 
 	}
 
 	getVisibleLineGeometry() {
 
-		return toLineGeometry( this.visibleEdges );
+		return toLineGeometry( this.visibleEdges, this.groupKeyToIndex ? this.visibleGroupIndices : null );
 
 	}
 
 	getHiddenLineGeometry() {
 
-		return toLineGeometry( this.hiddenEdges );
+		return toLineGeometry( this.hiddenEdges, this.groupKeyToIndex ? this.hiddenGroupIndices : null );
 
+	}
+
+	getGroupKeys() {
+
+		if ( ! this.groupKeyToIndex ) return {};
+		return Object.fromEntries( this.groupKeyToIndex );
 
 	}
 
@@ -255,6 +285,9 @@ class ProjectedEdgeCollector {
 
 		// Convert overlaps to lines
 		Logger.startStep( 'Converting overlaps to lines' );
+
+		const hasGroups = this.hasGroups;
+
 		for ( let i = 0; i < edges.length; i ++ ) {
 
 			if ( performance.now() - time > iterationTime ) {
@@ -267,8 +300,31 @@ class ProjectedEdgeCollector {
 			// convert the overlap points to proper lines
 			const line = edges[ i ];
 			const hiddenOverlaps = hiddenOverlapMap[ i ];
+
+			const prevVisibleCount = visibleEdges.length;
+			const prevHiddenCount = hiddenEdges.length;
+
 			overlapsToLines( line, hiddenOverlaps, false, visibleEdges );
 			overlapsToLines( line, hiddenOverlaps, true, hiddenEdges );
+
+			if ( hasGroups ) {
+
+				// groupIndex was stamped directly on the Line3 before the BVH reordered edges
+				const groupIndex = line.groupIndex;
+
+				for ( let j = prevVisibleCount; j < visibleEdges.length; j ++ ) {
+
+					this.visibleGroupIndices.push( groupIndex );
+
+				}
+
+				for ( let j = prevHiddenCount; j < hiddenEdges.length; j ++ ) {
+
+					this.hiddenGroupIndices.push( groupIndex );
+
+				}
+
+			}
 
 		}
 
@@ -328,6 +384,7 @@ export class ProjectionGenerator {
 		const {
 			onProgress = () => {},
 			visibilityCuller = null,
+			groupFn = null,
 		} = options;
 
 		Logger.reset();
@@ -368,24 +425,69 @@ export class ProjectionGenerator {
 		Logger.startStep( 'Generating candidate edges' );
 		onProgress( 'Generating candidate edges' );
 		let edges = [];
-		yield* edgeGenerator.getEdgesGenerator( scene, edges, options );
+		let edgeMeshMap = groupFn ? [] : null;
+		yield* edgeGenerator.getEdgesGenerator( scene, edges, edgeMeshMap );
 		if ( includeIntersectionEdges ) {
 
 			Logger.startStep( 'Generating intersection edges' );
 			onProgress( 'Generating intersection edges' );
-			yield* edgeGenerator.getIntersectionEdgesGenerator( scene, edges, options );
+			yield* edgeGenerator.getIntersectionEdgesGenerator( scene, edges, edgeMeshMap );
 
 		}
 
 		// filter out any degenerate projected edges
 		Logger.startStep( 'Pre-filtering edges' );
 		onProgress( 'Pre-filtering edges' );
-		edges = edges.filter( e => ! isYProjectedLineDegenerate( e ) );
+		if ( edgeMeshMap ) {
+
+			const filteredEdges = [];
+			const filteredMap = [];
+			for ( let i = 0; i < edges.length; i ++ ) {
+
+				if ( ! isYProjectedLineDegenerate( edges[ i ] ) ) {
+
+					filteredEdges.push( edges[ i ] );
+					filteredMap.push( edgeMeshMap[ i ] );
+
+				}
+
+			}
+
+			edges = filteredEdges;
+			edgeMeshMap = filteredMap;
+
+		} else {
+
+			edges = edges.filter( e => ! isYProjectedLineDegenerate( e ) );
+
+		}
 
 		yield;
 
 		const collector = new ProjectedEdgeCollector( scene, this.useWebGPU );
 		collector.iterationTime = iterationTime;
+
+		// Stamp group index directly on each Line3 edge so it survives BVH reordering
+		if ( groupFn && edgeMeshMap ) {
+
+			const groupKeyToIndex = new Map();
+			for ( let i = 0; i < edges.length; i ++ ) {
+
+				const key = groupFn( edgeMeshMap[ i ] );
+				if ( ! groupKeyToIndex.has( key ) ) {
+
+					groupKeyToIndex.set( key, groupKeyToIndex.size );
+
+				}
+
+				edges[ i ].groupIndex = groupKeyToIndex.get( key );
+
+			}
+
+			collector.groupKeyToIndex = groupKeyToIndex;
+			collector.hasGroups = true;
+
+		}
 
 		onProgress( 'Building BVH & computing overlaps' );
 		yield* collector.addEdgesGenerator( edges, {

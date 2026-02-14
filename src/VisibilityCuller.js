@@ -97,14 +97,16 @@ export class VisibilityCuller {
 		// Create a scene with all objects using ID materials
 		const idScene = new Scene();
 		const originalMaterials = new Map();
+		const originalParents = new Map();
 		const idMaterials = [];
 
 		for ( let i = 0; i < objects.length; i ++ ) {
 
 			const object = objects[ i ];
 
-			// Store original material
+			// Store original material and parent
 			originalMaterials.set( object, object.material );
+			originalParents.set( object, object.parent );
 
 			// Create and assign ID material
 			const idMaterial = new IDMaterial();
@@ -180,11 +182,20 @@ export class VisibilityCuller {
 
 		}
 
-		// Restore original materials and remove from ID scene
+		// Restore original materials and re-add to original parents
 		for ( const object of objects ) {
 
 			object.material = originalMaterials.get( object );
-			idScene.remove( object );
+			const originalParent = originalParents.get( object );
+			if ( originalParent ) {
+
+				originalParent.add( object );
+
+			} else {
+
+				idScene.remove( object );
+
+			}
 
 		}
 

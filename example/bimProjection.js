@@ -103,8 +103,8 @@ async function loadModel(
 	});
 
 	world.scene.three.add(model.object);
-	model.object.rotation.x = Math.PI / 4;
-	model.object.rotation.y = Math.PI / 4;
+	// model.object.rotation.x = Math.PI / 4;
+	// model.object.rotation.y = Math.PI / 4;
 	const now = performance.now();
 	await fragments.core.update(true);
 	const then = performance.now();
@@ -113,7 +113,7 @@ async function loadModel(
 	return model;
 }
 
-const model = await loadModel("/frags/metal.frag");
+const model = await loadModel("/frags/school_arq.frag");
 
 // const clipper = components.get(OBC.Clipper);
 // const planeId = clipper.createFromNormalAndCoplanarPoint(world, new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0));
